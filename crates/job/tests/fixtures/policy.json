@@ -1,0 +1,49 @@
+{
+  "protected_paths": ["/", "/*", "~", "$HOME", "${HOME}", "/home", "/home/agent", "/home/agent/*", "/home/agent/repos", "/home/agent/work", "/usr", "/etc", "/var", "/boot", "/sys", "/proc", "/dev"],
+  "work_root": "/home/agent/work",
+  "repos_root": "/home/agent/repos",
+  "sudo_callers": ["lead"],
+  "push": [{"caller": "lead", "remotes": ["backup"]}],
+  "rules": {
+    "rm-recursive-force": {
+      "forbids": "rm with both a recursive and a force flag",
+      "instead": "remove a file with rm -i /full/path/to/file; remove a directory by its literal path without -f"
+    },
+    "rm-protected": {
+      "forbids": "a recursive rm of the root, a home, a shared tree or a system directory",
+      "instead": "name the one file or directory you mean by its full path"
+    },
+    "empty-variable": {
+      "forbids": "a destructive command (rm, mv, cp -r, chmod -R, chown -R, find -delete, truncate, shred, dd of=) whose path holds a variable or substitution, which may be empty or unexpanded",
+      "instead": "expand the value yourself and write the full path, or write the variable as ${NAME:?} so that an empty value stops the command"
+    },
+    "find-root": {
+      "forbids": "find starting at /",
+      "instead": "find . -name PATTERN, or find in the one directory you mean"
+    },
+    "kill-by-pattern": {
+      "forbids": "pkill and killall, which match processes of every user of the account by name or pattern",
+      "instead": "kill PID of your own process"
+    },
+    "other-worktree": {
+      "forbids": "a git command that changes state in a work directory of another agent or in a shared checkout",
+      "instead": "change your own work directory, and ask the owner of another one"
+    },
+    "no-verify": {
+      "forbids": "git with --no-verify, which skips the hooks of the repository",
+      "instead": "fix what the hook refused and commit again"
+    },
+    "git-push": {
+      "forbids": "git push by an agent or to a remote that the policy does not name",
+      "instead": "leave pushing to the agent the policy names"
+    },
+    "pipe-to-shell": {
+      "forbids": "downloading with curl or wget and piping it into a shell",
+      "instead": "download to a file, read it, then run it on purpose"
+    },
+    "sudo": {
+      "forbids": "sudo by an agent the policy does not name",
+      "instead": "ask the person who administers the host"
+    }
+  }
+}

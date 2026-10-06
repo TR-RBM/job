@@ -1,0 +1,19 @@
+#!/bin/sh
+set -eu
+if [ -r ./conf ]; then . ./conf; fi
+: "${SERVICE_USER:?set SERVICE_USER in ./conf beside this script}"
+BIN=${BIN:-@bindir@/jobd}
+CG=${CG:-/sys/fs/cgroup/job}
+SERVICE_GROUP=${SERVICE_GROUP:-$(id -gn "$SERVICE_USER")}
+
+[ -d "$CG" ] || mkdir "$CG"
+[ -d "$CG/daemon" ] || mkdir "$CG/daemon"
+for f in "$CG" "$CG/cgroup.procs" "$CG/cgroup.subtree_control" "$CG/cgroup.threads" \
+         "$CG/daemon" "$CG/daemon/cgroup.procs" "$CG/daemon/cgroup.subtree_control" "$CG/daemon/cgroup.threads"; do
+    chown "$SERVICE_USER:$SERVICE_GROUP" "$f"
+done
+echo $$ > "$CG/daemon/cgroup.procs"
+
+HOME=$(getent passwd "$SERVICE_USER" | cut -d: -f6)
+export HOME
+exec chpst -u "$SERVICE_USER:$SERVICE_GROUP${SOCKET_GROUP:+:$SOCKET_GROUP}" "$BIN" --foreground 2>&1

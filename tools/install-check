@@ -1,0 +1,60 @@
+#!/bin/sh
+set -eu
+ROOT=$(cd "$(dirname "$0")/.." && pwd)
+cd "$ROOT"
+tmp=$(mktemp -d)
+fail() {
+    echo "tools/install-check: $1" >&2
+    find "$tmp" -delete
+    exit 1
+}
+printf '#!/bin/sh\nexit 0\n' > "$tmp/stub"
+dest=$tmp/dest
+make -s install DESTDIR="$dest" PREFIX=/usr JOB_BIN="$tmp/stub" || fail "make install failed"
+(cd "$dest" && find . ! -type d | LC_ALL=C sort | while read -r file; do
+    printf '%s %s\n' "$(stat -c %a "$file")" "$file"
+done) > "$tmp/found"
+diff -u tools/install-manifest "$tmp/found" || fail "installed files differ from tools/install-manifest"
+[ "$(readlink "$dest/usr/bin/jobd")" = job ] || fail "jobd is not a relative link to job"
+for unit in "$dest/usr/lib/systemd/system/jobd.service" "$dest/usr/lib/systemd/user/jobd.service" "$dest/usr/share/doc/job/runit/run"; do
+    if grep -q '@[A-Za-z_]*@' "$unit"; then fail "$unit has an unreplaced placeholder"; fi
+done
+grep -q '^ExecStart=/usr/bin/jobd --system$' "$dest/usr/lib/systemd/system/jobd.service" || fail "the system unit does not start /usr/bin/jobd --system"
+grep -q '^ExecStart=/usr/bin/jobd$' "$dest/usr/lib/systemd/user/jobd.service" || fail "the user unit does not start /usr/bin/jobd"
+if grep -q 'JOB_CGROUP_ROOT' "$dest/usr/lib/systemd/system/jobd.service" "$dest/usr/lib/systemd/user/jobd.service"; then
+    fail "a unit sets JOB_CGROUP_ROOT"
+fi
+sh -n "$dest/usr/share/doc/job/runit/run" || fail "the runit example is not valid shell"
+make -s uninstall DESTDIR="$dest" PREFIX=/usr || fail "make uninstall failed"
+left=$(find "$dest" ! -type d)
+[ -z "$left" ] || fail "uninstall left: $left"
+[ ! -e "$dest/usr/share/doc/job" ] || fail "uninstall left the documentation directory"
+find "$tmp" -delete
+have_groff=0
+have_mandoc=0
+if command -v groff > /dev/null; then have_groff=1; fi
+if command -v mandoc > /dev/null; then have_mandoc=1; fi
+if [ "$have_mandoc" = 0 ]; then
+    if [ "${JOB_REQUIRE_MANDOC:-0}" = 1 ]; then
+        echo "tools/install-check: mandoc not installed and JOB_REQUIRE_MANDOC=1 asks for it" >&2
+        exit 1
+    fi
+    if [ "$have_groff" = 1 ]; then
+        echo "tools/install-check: mandoc not installed: manuals checked with groff only"
+    else
+        echo "tools/install-check: mandoc and groff not installed: manuals not checked"
+    fi
+elif [ "$have_groff" = 0 ]; then
+    echo "tools/install-check: groff not installed: manuals checked with mandoc only"
+fi
+for page in man/job.1 man/job.conf.5 man/job.7 man/jobd.8; do
+    if [ "$have_groff" = 1 ]; then
+        warnings=$(groff -Tutf8 -mdoc -ww "$page" 2>&1 > /dev/null)
+        [ -z "$warnings" ] || { echo "tools/install-check: $page: $warnings" >&2; exit 1; }
+    fi
+    if [ "$have_mandoc" = 1 ]; then
+        mandoc -Tlint -W warning "$page" || { echo "tools/install-check: $page fails mandoc lint" >&2; exit 1; }
+    fi
+done
+if command -v bash > /dev/null; then bash -n completions/job.bash; fi
+if command -v fish > /dev/null; then fish -n completions/job.fish; fi

@@ -1,0 +1,21 @@
+[Unit]
+Description=Job execution and scheduling service
+Documentation=man:jobd(8) man:job.conf(5)
+
+[Service]
+Type=exec
+User=job
+Group=job
+ExecStart=@bindir@/jobd --system
+RuntimeDirectory=job
+RuntimeDirectoryMode=0750
+StateDirectory=job
+StateDirectoryMode=0700
+Delegate=yes
+DelegateSubgroup=daemon
+KillMode=process
+TasksMax=infinity
+Restart=always
+
+[Install]
+WantedBy=multi-user.target

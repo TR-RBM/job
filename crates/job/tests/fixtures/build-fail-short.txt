@@ -1,0 +1,4 @@
+   Compiling demo v0.1.0 (/work/demo)
+src/lib.rs:2:52: error[E0308]: mismatched types: expected `u32`, found `&str`
+src/lib.rs:3:17: error[E0425]: cannot find function `undefined_fn` in this scope: not found in this scope
+error: could not compile `demo` (lib) due to 2 previous errors

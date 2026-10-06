@@ -1,0 +1,1790 @@
+.Dd October 6, 2026
+.Dt JOB 1
+.Os
+.Sh NAME
+.Nm job
+.Nd execute, schedule and supervise commands
+.Sh SYNOPSIS
+.Nm
+.Cm run
+.Op Ar options
+.Fl -
+.Ar command ...
+.Nm
+.Cm profile | class
+.Cm list | show Ar name@revision
+.Op Fl -json
+.Nm
+.Cm submit
+.Op Ar options
+.Fl -
+.Ar command ...
+.Nm
+.Cm attach
+.Ar id
+.Op Fl -detach-key Ar key | Cm none
+.Nm
+.Cm status
+.Ar id
+.Nm
+.Cm cancel | remove | release | retry | suspend | continue | signal | reprioritize | move | wait
+.Op Ar options
+.Ar id Ns Oo Li - Ns Ar id Oc Ns Oo Li , Ns Ar id ... Oc ...
+.Op Fl -dry-run
+.Op Fl -json
+.Nm
+.Cm log
+.Ar id
+.Op Cm full | errors | tail Ar count | grep Ar text | lines Ar start..end
+.Nm
+.Cm queue
+.Op Ar name
+.Nm
+.Cm list
+.Op Fl -all | Fl -state Ar state,...
+.Op Fl -queue Ar path
+.Op Fl -label Ar key=value
+.Op Fl -limit Ar count
+.Op Fl -id Ar set
+.Op Fl -json | Fl -format Cm text | json | tsv
+.Nm
+.Cm move
+.Ar id
+.Fl -queue Ar path
+.Nm
+.Cm explain
+.Ar id | path Op Ar key
+.Op Fl -json
+.Nm
+.Cm net list
+.Op Fl -json
+.Nm
+.Cm net show
+.Ar name
+.Op Fl -json
+.Nm
+.Cm show
+.Ar id
+.Op Fl -json
+.Nm
+.Cm help
+.Op Fl -all | Fl -syntax | Ar command ...
+.Nm
+.Cm completion
+.Cm bash | fish
+.Nm
+.Cm doctor
+.Op Fl -json
+.Op Fl -system
+.Nm
+.Cm audit
+.Op Fl -target Ar id | path
+.Op Fl -action Ar name
+.Op Fl -since Ar milliseconds
+.Op Fl -json
+.Nm
+.Cm events
+.Op Fl f | Fl -follow
+.Op Fl -job Ar id
+.Op Fl -queue Ar path
+.Op Fl -since Ar milliseconds
+.Op Fl -format Cm text | json
+.Pp
+.Nm
+.Op Fl -system
+.Ar command ...
+.Sh DESCRIPTION
+.Nm
+runs commands through a local service, schedules resource reservations,
+records output and supervises their lifetime.
+The service is
+.Xr jobd 8 .
+By default the service and its clients run under the same Unix account;
+a service may share its socket with one Unix group.
+Arguments after the option delimiter execute literally, including a single argument.
+Use an explicit shell command such as sh -c, or
+.Fl -shell Ar executable
+to run that shell with -c, the first command argument as script,
+job as its zero argument, and all remaining arguments as positional parameters.
+.Fl -legacy-shell
+explicitly restores the old single-argument Bash interpretation.
+.Pp
+.Cm run
+streams original stdout and stderr separately while waiting.
+Use --summary or --json for a final result view instead.
+.Cm submit
+prints an identifier and returns immediately.
+.Cm wait
+waits for completion without replaying output; use
+.Fl -summary
+to request the diagnostic summary, or
+.Fl -json
+for a versioned outcome.
+.Cm status
+reports state, and
+.Cm cancel
+requests termination of a job accessible through this service.
+Session labels are descriptive metadata, not an authorization boundary.
+.Sh OPTIONS
+.Ss Explicit profiles and classes
+.Fl -execution-profile Ar name@revision
+on run, submit, create or edit selects an execution profile from service configuration.
+.Fl -class Ar name@revision
+selects an admission class, which changes no kernel weights.
+Queue and Group create/set accept
+.Fl -job-execution-profile
+and
+.Fl -job-class
+as inherited selectors.
+The value none disables the corresponding inherited selection.
+Direct Job fields win over profile defaults; inherited profiles lose to fields
+set on the same or a closer collection. Ancestor constraints remain binding.
+.Pp
+.Cm profile list | show Ar name@revision
+and
+.Cm class list | show Ar name@revision
+inspect accepted definitions with schema version and SHA-256 digest.
+Status JSON includes the attempt's resolved preset snapshot.
+Accepted revisions are immutable and historical attempts retain their definitions.
+See
+.Xr job.conf 5
+for configuration.
+.Ss Admission ordering
+.Fl -priority Ar integer
+on run, submit, create or edit selects optional admission urgency
+from -1000 through 1000; higher values rank first.
+It changes no kernel CPU or I/O weight and does not preempt running work.
+Queue and Group create/set accept this field as a default, plus
+.Fl -priority-min , Fl -priority-max , Fl -aging , Fl -strict-fifo
+and
+.Fl -backfill .
+Unset removes local configuration and reveals inherited values.
+.Pp
+All ancestor priority bounds intersect; children cannot widen them.
+.Cm reprioritize Ar id Fl -priority Ar integer
+changes only held or queued work, checks the attempt and records the actor/change.
+Original submission is retained.
+.Cm explain Ar id Op Fl -json
+reports priority, sources, bounds, eligible waiting credit, effective score,
+FIFO constraints, backfill and blocking reasons.
+Launched attempts retain their policy snapshot.
+.Pp
+Aging adds one point per complete configured interval of eligible waiting.
+Units are ms, s, m, min and h; bare numbers mean seconds.
+Durations must be positive whole milliseconds within unsigned 64-bit range.
+Held and administratively paused time is excluded; resource waits count.
+Credit survives same-boot restart, renames and moves; retry starts at zero.
+Reboot retains confirmed credit only.
+Changing the interval reinterprets retained credit; disabling aging stops accrual.
+Scores have no aging cap; counter overflow stops admission visibly.
+.Pp
+Strict FIFO accepts true or false.
+An ancestor's true takes precedence over urgency and cannot be disabled by children.
+Backfill accepts off or conservative.
+With off, protected waiters hold later competing reservations or work sharing
+a capped ancestor; work without a shared constraint can start independently.
+Protection is retained through intermediate waiters with overlapping resources.
+Conservative backfill protects planned opportunities across host and ancestor
+request budgets and concurrency constraints.
+Time limits include termination grace in predictions; unknown durations can block backfill.
+Predictions remain advisory: indefinite running work or persistent holds can prevent a start.
+An empty Queue enables none of these policies.
+.Ss Hierarchical fair share
+.Cm group create | set Ar path Fl -fair-share Ar mode
+enables a local sibling competition scope.
+Modes are cpu-request-time, memory-request-time and off.
+CPU mode accounts requested milli-CPU times elapsed milliseconds;
+memory mode accounts requested bytes times elapsed milliseconds.
+Every descendant Job needs a positive resolved reservation for the selected resource.
+.Fl -share-weight Ar integer
+on a child Queue or Group accepts 1 through 10000, with effective weight 1
+inside a configured parent scope when unset.
+.Pp
+The least-served weighted child is considered first, recursively,
+before Job urgency; strict FIFO and all admission gates still apply.
+Descendant Queue counts do not multiply a Group's outer share.
+New or rejoining children start at the scope's service watermark,
+retain prior debt and earn no unlimited idle credit.
+Weights never change kernel CPU or I/O controls.
+.Pp
+Starting, running, suspended and stopping attempts retain reservations
+and accrue accounted service until the service releases them.
+Same-boot downtime charges recorded reservations until reconciliation;
+reboot retains confirmed history only.
+This measures retained reservations, not actual utilization.
+The horizon is cumulative participation, with no rolling expiry.
+.Pp
+Weight changes retain historical normalized service and apply prospectively;
+changing a scope's resource basis requires an inactive subtree.
+A temporary one-dispatch-interval lookahead spreads simultaneous starts.
+.Cm explain
+shows scope, child, resource, weight, service, remainder, watermark and active lookahead.
+Shares are relative targets, not guaranteed percentages or start times.
+Indefinite running work can prevent convergence.
+.Ss Pressure observations
+.Cm pressure Op Ar id Op Fl -json
+reads CPU, memory and I/O pressure from the host, or from the recorded cgroup
+of a local active Job attempt.
+Each some/full metric reports availability, avg10/avg60/avg300 and total stall time.
+JSON averages are integer basis points (100 means one percent);
+total_us is an unsigned integer count of microseconds.
+The snapshot includes wall time, boot identity/time when available,
+source paths and the observed workload cgroup device/inode.
+Host CPU full is undefined.
+Unavailable measurements have a reason and no numeric substitute.
+Watch-backend, remote, unstarted and finished Jobs have no local workload PSI.
+.Pp
+.Cm pressure parse Ar file Fl -resource Ar cpu|memory|io Op Fl -host
+parses saved kernel pressure text and emits JSON without contacting the service.
+The host flag marks host CPU full as undefined.
+File input is limited to 4096 bytes; final-component symlinks are refused.
+Malformed metrics report unavailable while valid metrics remain usable.
+.Pp
+Observation creates no cgroup and changes no admission policy or kernel control.
+It shows affected work, without establishing which workload caused contention.
+Snapshots are sequential reads, not atomic samples across resources.
+.Pp
+.Cm pressure status | events Op Fl -json
+emits versioned JSON for current controller rules or the most recent 256 transitions.
+The state includes phase, source scope, signal, thresholds, temporary concurrency
+ceiling and next reconsideration time on the boot-relative clock.
+.Cm queue create | set Ar path Fl -pressure Ar file
+and the corresponding Group commands load a JSON array of local pressure rules.
+.Cm queue unset Ar path Cm pressure
+removes the local policy; ancestor rules still apply.
+Rules create no resource domain and observe the maximum selected average
+among existing active descendant workload cgroups.
+This is an any-descendant predicate, not aggregate PSI.
+Service host rules are described in
+.Xr job.conf 5 .
+.Pp
+Sustained high pressure holds new starts, leaving running work unchanged.
+After a minimum hold and sustained low pressure, a temporary ceiling starts
+at current active concurrency plus one and increases by one per recovery interval.
+It clears when current demand fits; all explicit limits remain binding.
+Missing data never counts as low pressure.
+Required missing metrics hold starts; optional missing metrics leave an open
+rule open and preserve any existing restrictive state.
+State publication requires a durable journal write.
+Sampling uses a nominal one-second interval.
+Kernel PSI notifications may trigger earlier measurements, at most one batch
+per 250 milliseconds. A two-second notification window uses the rule's high
+threshold as a wake hint; admission still uses its configured average and timers.
+The service bounds monitors to 256 sources and reports omitted sources,
+registration failures and runtime notification counts through pressure status.
+Denied monitors fall back to sampling and retry after 30 seconds.
+Required monitoring requires measurements, not notification permissions.
+.Pp
+.Cm pressure replay Ar file Op Fl -json
+evaluates a versioned JSON signal trace using the live controller transition logic.
+It contacts no service and performs no kernel or service mutation.
+The trace contains schema_version 1, host, rule and frames.
+Each frame supplies boot_id, at_ms, signal, active and demand,
+with optional restart for a same-boot service restart.
+Time must increase within a boot; returning to an earlier boot is invalid.
+Input is limited to one MiB and 4096 frames; final-component symlinks are refused.
+Output contains the state after each frame and whether this rule would hold
+one additional start. It does not simulate other scheduler gates or throughput.
+.Ss Live resource changes
+.Cm update Ar id Op Ar controls
+changes a local running or suspended Job's explicit CPU, memory or device I/O controls.
+.Cm queue update Ar path
+and
+.Cm group update Ar path
+change an existing shared resource domain and its configuration for future starts.
+.Fl -dry-run
+previews changes without writing.
+Running commands, environments and admission reservations remain unchanged.
+.Pp
+Every finite reduction of memory.max requires
+.Fl -allow-oom ;
+it can cause reclaim and terminate processes.
+Readback confirms the configured ceiling, not immediate reduction of usage.
+Memory.high can throttle work heavily.
+Existing ancestor ceilings and OOM grouping remain in force.
+.Pp
+Updates across controls and devices are not atomic.
+The service journals intent, individual writes and metadata publication.
+.Cm resource-update Ar operation Op Fl -json
+reports progress and errors.
+Exit 75 means pending; inspect that operation instead of submitting again.
+While pending, new admission and conflicting administration wait;
+signals, cancellation, attachment and suspension remain available.
+.Fl -abandon
+ends an incomplete operation only after its target domain is empty;
+completed writes are not rolled back.
+Use ordinary set/unset after draining to change domain topology.
+.Ss Execution controls
+.Bl -tag -width "--allow-write path"
+.It Fl -pty
+Allocate a persistent terminal before execution.
+.Cm run
+attaches immediately and requires terminal input and output.
+.Cm submit
+leaves the terminal detached.
+The option cannot be combined with remote execution through
+.Fl -on .
+.It Fl q Ar name , Fl -queue Ar name
+Submit to a named queue.
+.It Fl -dir Ar directory
+Set the working directory.
+.It Fl -label Ar key=value
+Attach a label to the Job; repeat it for several.
+See
+.Sx LABELS .
+.It Fl -stdin
+Only
+.Cm run :
+pass the standard input of the client to the Job.
+See
+.Sx STANDARD INPUT .
+.It Fl -on-interrupt Cm forward | detach | cancel
+Only
+.Cm run
+in pipe mode: what the first SIGINT or SIGTERM to the client does.
+See
+.Sx ATTACHED RUNS AND DETACHED SUBMISSIONS .
+.It Fl -pids-max Ar count | Cm unlimited
+Limit the number of processes and threads of the Job through the cgroup
+control pids.max.
+It reserves nothing and needs a delegated pids controller; the value written
+is read back and shown as applied_resources in
+.Cm status Fl -json .
+.It Fl -write-budget Ar size
+Stop the Job once it has written more than this many bytes.
+The service counts what the Job writes; it sets no file system quota, and
+.Cm host Fl -json
+reports filesystem_quota as unsupported with the reason.
+.Fl -disk
+is the earlier spelling.
+.It Fl -cores Ar number
+Reserve CPU capacity and set its relative CPU weight.
+This is not a per-job hard CPU quota.
+.It Fl -mem Ar size
+Declare a memory reservation and limit, for example 4G.
+.It Fl -cpu-request Ar number
+Account CPU capacity for admission only, without deriving a weight or quota.
+.It Fl -cpu-limit Ar number | unlimited
+Set a CPU bandwidth ceiling with a fixed 100000 microsecond period.
+The minimum finite value is 0.01 CPU. This does not create a reservation.
+.It Fl -cpu-weight Ar number
+Set relative kernel CPU weight from 1 through 10000, independently of admission.
+.It Fl -memory-request Ar size
+Account memory for admission without setting a kernel limit.
+.It Fl -memory-high Ar size | unlimited
+Set the memory reclaim and throttling threshold.
+.It Fl -memory-max Ar size | unlimited
+Set the hard memory ceiling.
+.It Fl -memory-swap-max Ar size | unlimited
+Set the separate swap ceiling; zero disables swap for this workload.
+.It Fl -pids Ar number
+Earlier spelling: reserve this many processes and threads at admission and
+limit the Job to them.
+Use
+.Fl -pids-max
+for a limit without a reservation; giving both with different values is
+refused.
+.It Fl -disk Ar size
+Earlier spelling of
+.Fl -write-budget :
+limit bytes written, not occupied filesystem space.
+.It Fl -time Ar duration
+Limit execution time, for example 30m. The time counts from the start of the
+command, not from the admission of the Job.
+.It Fl -budget Ar duration
+Set the ordinary run client's waiting budget; none waits to completion.
+PTY attachment lasts until detach, connection loss or job exit.
+.It Fl -session Ar label
+Record a descriptive session label.
+.It Fl -net Cm default | none | socks5://HOST:PORT | http://HOST:PORT | https://HOST:PORT | wireguard:FILE | ns:NAME | profile:NAME
+Use host networking, a network namespace with loopback only, a network
+namespace whose only way out is the named proxy or WireGuard tunnel, an existing
+network namespace that the service configuration names, or a routing profile
+that the service configuration defines.
+See
+.Sx NETWORK BOUNDARIES .
+.It Fl -net-secret-file Ar file
+Read the proxy's USER:PASSWORD from
+.Ar file ,
+which must be a regular file of the service user with mode 600.
+Only its path is recorded.
+.It Fl -bandwidth Ar rate
+Cap the Job's network each way, for example 5Mbit; UDP and TCP alike.
+.It Fl -confine
+Restrict filesystem writes with Landlock.
+.It Fl -allow-write Ar path
+Add a writable path; implies confinement.
+.It Fl -idempotency-key Ar key
+With run, submit and create: name this submission.
+A later request with the same key and the same specification returns the
+Job already recorded and adds none; run then waits for that Job.
+The same key with a different specification is refused.
+The key is 1 to 128 characters of A-Z a-z 0-9 . _ : - and is free again
+once its Job record is removed.
+.It Fl -json
+Return machine-readable records where supported.
+Not available with interactive
+.Cm run Fl -pty .
+.El
+.Pp
+Use
+.Nm Fl -help
+for the full set of options, remote execution, network shaping and queue settings.
+.Sh RESOURCE DEFAULTS
+.Pp
+Explicit new kernel controls require a writable delegated controller.
+CPU values use at most three fractional digits; memory inputs must express
+whole bytes. Memory thresholds round upward to page boundaries.
+Use the same resource names prefixed with
+.Fl -job-
+in Queue/Group create or set to define per-Job defaults, for example
+.Fl -job-cpu-limit .
+These defaults are distinct from aggregate collection limits.
+.Cm unset
+restores inheritance. Changes affect future submissions and explicit edits
+or retries, not existing waiting or running attempts.
+.Cm status Fl -json
+includes resource_sources and applied_resources, separate from the admission
+reservation. The original submission remains available.
+.Sh AGGREGATE RESOURCE CONTROLS
+On a Queue or Group, --cpu-limit, --cpu-weight, --memory-high,
+--memory-max and --memory-swap-max apply to the complete subtree.
+Options prefixed with --job- provide individual Job defaults instead.
+Every ancestor ceiling remains binding; local unlimited cannot escape it.
+Empty objects create no additional kernel domains.
+.Pp
+Use queue/group show --json to inspect all aggregate domains.
+Job status records the launch domain chain and workload cgroup path.
+Changing active aggregate policies with set/unset is refused.
+Finish the affected work before changing those settings.
+Remote execution under local aggregate constraints is refused.
+.Pp
+CPU weights apply among sibling kernel domains and are not host percentages.
+Kernel OOM events are recorded without attributing them to an unproven limit.
+.Sh DEVICE I/O
+.Fl -io-max Ar MAJOR:MINOR,rbps=RATE,wbps=RATE,riops=N,wiops=N
+sets device byte rates and IOPS. Omitted directions are unlimited.
+Rates use whole bytes per second with binary size suffixes, or unlimited.
+IOPS use positive whole numbers, or unlimited.
+Repeat the option for distinct devices; duplicate device entries fail.
+.Pp
+.Fl -io-weight Ar MAJOR:MINOR=WEIGHT
+selects enabled IOCost with weights from 1 to 10000.
+.Fl -io-bfq-weight Ar MAJOR:MINOR=WEIGHT
+selects active BFQ with weights from 1 to 1000 and low_latency=0.
+The service does not change device-wide scheduler or cost policies.
+.Pp
+Use whole-block-device numbers from
+.Cm host Fl -json .
+Partitions and unavailable backends are refused.
+Each I/O map is one default field, replaced as a whole by a local value.
+Collection options without job- apply to the subtree; job-prefixed variants
+provide individual Job defaults. Every aggregate ancestor remains binding.
+These controls do not provide a filesystem space quota or admission priority.
+.Sh TERMINALS
+.Cm attach
+connects to an existing PTY job.
+All attached clients see its screen and may type simultaneously.
+Input may interleave; there is no input owner or line locking.
+The job continues when a client disconnects, including an SSH disconnect.
+.Pp
+Press Ctrl-] followed by d to detach.
+Press Ctrl-] twice to send a literal Ctrl-].
+.Pp
+.Fl -detach-key Ar key
+selects another detach key for this client:
+.Cm ctrl-
+followed by a letter or one of ], \e, ^ and _.
+The second key stays d, and pressing the detach key twice still sends it once.
+Without the option the key comes from
+.Ev JOB_DETACH_KEY ,
+then from detach_key in the terminal table of
+.Xr job.conf 5 ,
+then Ctrl-].
+With
+.Cm none
+no key is intercepted: detaching is only possible by closing the client's own
+terminal, which leaves the program running.
+.Cm run Fl -pty
+uses the environment and the configuration.
+Ctrl-C, Ctrl-Z and Ctrl-D are forwarded to the shared terminal and follow
+its current terminal settings. They may affect the program for every client.
+.Pp
+The shared window uses the smallest attached row and column dimensions.
+With no clients the last size remains.
+A new attachment receives the current visible screen.
+Historical scrollback is not restored; use
+.Cm log
+for recorded output.
+.Pp
+Use the same Unix account and state directory when connecting over SSH.
+Logging in under another account does not grant access to the service.
+No separate application login is required.
+A terminal survives a restart of the service alone.
+A reboot, supervisor failure, or service stop that kills the whole process tree
+ends it. It cannot be attached after the job finishes.
+.Pp
+Terminal emulation supports common text applications, not every xterm extension.
+There is no clipboard forwarding or graphical terminal protocol.
+Slow clients are disconnected and can reattach.
+Output logs combine stdout and stderr; displayed controls are escaped.
+Input is not separately recorded, but program output or terminal echo may reveal it.
+.Sh QUEUES
+.Cm queue add Ar name
+creates a queue with no implicit concurrency restriction. The preferred spelling is
+.Cm queue create Ar path .
+.Cm queue set Ar name Ar settings
+changes settings.
+.Cm queue pause | resume Ar name
+holds or releases waiting jobs; it does not freeze running processes.
+.Cm queue clear Ar name
+cancels waiting jobs.
+.Cm queue rm Ar name Op Fl -when-empty
+removes or drains a queue.
+.Pp
+Groups may contain both Queues and Groups. Use
+.Cm group create Ar path
+and
+.Cm queue create Ar path .
+Both accept
+.Fl -max-running Ar number .
+Group concurrency is counted across its subtree.
+.Cm group pause | resume Ar path
+controls admission while preserving child holds.
+.Cm group close | open Ar path
+controls new submissions.
+.Pp
+Both object types support
+.Cm list , show , rename , move , unset , close , open , remove .
+Use
+.Cm move Fl -group Ar destination Ar path
+for an inactive object. IDs survive path changes; cycles and duplicate
+sibling names are refused. Removal refuses nonempty containers and Job records.
+.Cm show Ar path Fl -json
+reports local and inherited configuration.
+.Pp
+An empty Queue adds no local configuration or serial execution requirement.
+The ordinary service profile uses only declared resource requests.
+Legacy estimation, backfilling and host protections require the explicit
+legacy profile described in
+.Xr job.conf 5 .
+.Sh JOB LIFECYCLE
+.Cm create Op options
+.Fl - Ar command ...
+creates held work and prints its ID without starting it.
+.Cm edit Ar id Op options
+.Fl - Ar command ...
+replaces the complete requested command, options and environment of a held or
+queued Job. The original submission and Job ID remain unchanged.
+Active and terminal Jobs cannot be edited.
+.Cm release Ar id
+releases held work to scheduling. Release requires an open Queue;
+a Queue pause still prevents execution.
+.Pp
+Status distinguishes held, queued, starting, running, suspended, stopping and terminal
+outcomes: succeeded, failed, cancelled and lost. Exit status and failure
+reasons remain separate fields. Cancellation before execution records no
+start time. Stopping work retains its resource accounting until completion.
+The stopping deadline survives a service restart.
+.Pp
+Original submitted, latest requested and effective launch specifications are
+recorded separately. Original and current environments are retained in private
+state files and are not included in status output.
+.Pp
+.Cm retry Ar id
+.Op Fl -hold
+.Op Fl -current-env
+.Op Fl -queue Ar path
+.Op Fl -allow-lost
+.Op Fl -json
+creates the next attempt of a completed Job under its existing ID.
+The previous attempt is archived atomically with publication of the next.
+The saved environment is reused unless
+.Fl -current-env
+is given. Current Queue defaults are resolved again from the latest requested
+specification. A renamed Queue is followed by identity; a removed Queue
+requires an explicit destination. Closed Queues reject retries.
+.Fl -hold
+permits inspection and editing before release. Retry enters admission at the
+back of the current arrival order; it does not inherit the old waiting age.
+.Pp
+.Cm attempts Ar id Op Fl -json
+lists completed attempts and the current one. Structured output includes
+schema_version and an attempts array. Results, specifications and timestamps
+are retained separately per attempt. Environments are not returned.
+.Cm log Ar id Fl -attempt Ar number
+selects a retained historical log. Without this option, commands address
+the current attempt. Logs remain subject to retention.
+.Pp
+Retry waits briefly for a completing supervisor to exit and refuses a
+populated workload cgroup. Lost work requires
+.Fl -allow-lost
+because untracked processes or external side effects may remain.
+This flag does not terminate old work or guarantee exactly-once execution.
+.Sh REMOVAL
+.Cm remove Ar id
+.Op Fl -dry-run
+.Op Fl -allow-lost
+.Op Fl -json
+removes a completed Job and every attempt, retained log, saved environment,
+derived output template and estimator sample attributed to its identity.
+Work-directory files remain. Unattributed legacy estimator samples, including
+their command keys, remain; previews report their count.
+.Pp
+.Cm queue remove Ar path
+and
+.Cm group remove Ar path
+accept the same options and
+.Fl -recursive .
+The default refuses nonempty containers. Recursive removal selects the mixed
+subtree and Jobs currently belonging to its Queues. It refuses held, queued
+and active Jobs; cancellation is a separate operation. Root and default Queue
+cannot be removed. Historical object identities remain available to surviving
+attempt references. A Job retried into another Queue is not selected merely
+because its earlier attempt used a removed Queue.
+.Pp
+Dry run is read-only and returns a versioned selection with readiness and
+blocking reasons. A successful dry-run exit means the preview was produced,
+not that the operation is ready. Before mutation the CLI revalidates the
+selected object identities and Job attempts. Stale selections fail.
+Any lost attempt requires explicit
+.Fl -allow-lost ;
+this never overrides a known live supervisor or populated workload cgroup.
+.Pp
+Successful removal is quiet unless JSON output is requested.
+The service records a private operation journal before retiring data.
+Interrupted cleanup is retried and completed at startup. Exit 75 can mean
+that a supervisor is still exiting or an accepted cleanup remains pending;
+structured output distinguishes these cases. Other administrative changes
+are refused while committed cleanup is blocked. Existing execution continues
+to be supervised. Minimal receipts remain in the state directory's removals
+subdirectory, and retired Job IDs are never reused.
+.Sh RECURSIVE CANCELLATION
+.Cm queue cancel Fl -recursive Ar path
+and
+.Cm group cancel Fl -recursive Ar path
+capture the current nonterminal Job attempts in the selected subtree.
+.Fl -dry-run
+reports the selection without changing it;
+.Fl -json
+produces a versioned selection or operation with per-Job results.
+New arrivals after selection are excluded. Changed attempt or membership
+invalidates an uncommitted selection. Natural completion is a successful no-op.
+.Pp
+The service saves a cancellation operation before acting and blocks admission
+of its captured attempts until application is recorded. Partial failures
+remain pending and are retried, including after restart. Held and queued Jobs
+become cancelled without starting. Active Jobs enter stopping, are thawed
+if necessary, and receive graceful termination followed by escalation under
+the existing termination deadline. An accepted operation does not mean
+all processes have exited; use
+.Cm wait
+to observe completion.
+.Pp
+Exit 75 means application or recording remains pending. Exit 1 means a
+completed operation contains a per-Job error. Exit 0 means application was
+recorded for every selected attempt. Collection configuration and admission
+holds are unchanged. Cancellation never removes Job records. Minimal
+cancellation operation records survive separate removal and are retained
+for recovery and replay. Offline backup and migration require their completion.
+.Sh SUSPENSION
+.Cm suspend Ar id
+.Op Fl -timeout Ar duration
+.Op Fl -json
+requests cgroup v2 freezing of a local workload and confirms the kernel state.
+.Cm continue Ar id
+uses the same options and requests thawing.
+Neither operation substitutes process signals when cgroup freezing is unavailable.
+Remote execution must be controlled on its execution host.
+.Pp
+Success confirms the effective freezer state. A suspended Job retains memory,
+open files, reservations and its concurrency slot. Elapsed deadlines continue.
+Cancellation requests thaw before TERM, with the existing escalation deadline.
+No application checkpoint is created.
+.Pp
+Confirmation waits five seconds by default, at most sixty seconds.
+Exit 75 means the saved request is still pending; a timeout does not undo it.
+An ancestor frozen by the administrator can prevent continuation.
+Inspect suspension.requested, suspension.pending and suspension.error in
+.Cm status Ar id Fl -json .
+An accepted request remains active after a kernel-control error;
+another explicit control replaces it.
+Opposing controls are identified by generation while a caller waits.
+.Pp
+.Cm queue suspend Fl -recursive Ar path
+and
+.Cm group suspend Fl -recursive Ar path
+select the currently active Jobs in the collection or mixed subtree.
+Replace suspend with continue to thaw them. These commands accept timeout
+and JSON options and return a result for each Job. Partial failures are
+reported and produce a nonzero exit status. New admissions and independent
+Queue pauses are unaffected. Use pause/resume for admission control.
+.Pp
+Structured timing separates elapsed_ms, suspended_ms and active_ms.
+Active duration excludes observed frozen intervals; it is not CPU usage.
+These are sampled wall-clock measurements. Requested suspension and observed
+intervals survive service restart with the original cgroup backend.
+.Sh SIGNALS
+.Cm signal Op Fl s Ar signal
+.Ar id
+sends a signal to current workload processes, excluding the supervisor.
+The default is TERM. Common signal names, names prefixed by SIG, and numeric
+Linux signals are accepted. Success produces no output.
+Processes that exit during delivery are skipped. An error may follow
+partial delivery. Signals do not request cancellation or claim whole-Job
+suspension. Use cancel for managed termination.
+.Pp
+Process control requires Linux pidfds. Recovery checks the boot identity
+and process start time before adopting a supervisor.
+.Sh ATTACHED RUNS AND DETACHED SUBMISSIONS
+.Cm submit
+leaves no client behind, so nothing that happens to a terminal reaches the Job.
+.Cm run ,
+.Cm wait ,
+.Cm logs Fl -follow
+and
+.Cm attach
+keep a client, and what happens to that client is defined as follows.
+Only
+.Cm cancel ,
+or
+.Cm run Fl -on-interrupt Cm cancel ,
+cancels a Job; a client that stops never does.
+.Bl -tag -width "closed"
+.It first SIGINT or SIGTERM
+.Cm run
+in pipe mode forwards it to the processes of the Job as the same signal and
+goes on waiting.
+.Cm run Fl -pty
+and
+.Cm attach
+detach and return 0; the Job goes on.
+.Cm wait
+and
+.Cm logs Fl -follow
+end by the signal; the Job is untouched.
+.It second SIGINT or SIGTERM
+.Cm run
+in pipe mode returns 75; the Job goes on.
+.It SIGHUP
+.Cm run
+in pipe mode returns 75; the Job goes on.
+.Cm run Fl -pty
+and
+.Cm attach
+detach; the Job goes on.
+.Cm wait
+and
+.Cm logs Fl -follow
+end by the signal; the Job is untouched.
+.It closed output (EPIPE)
+.Cm run
+in pipe mode returns 75; the Job goes on.
+.Cm run Fl -pty
+and
+.Cm attach
+report the lost connection and return 125; the Job goes on.
+.Cm logs
+ends with 125;
+.Cm wait
+prints nothing and is unaffected.
+Every other command that prints ends with 125 and without a message.
+.It lost service connection
+.Cm run
+in pipe mode still reads the output from the record and returns 75 after 60
+seconds without the service.
+.Cm run Fl -pty
+and
+.Cm attach
+return 125; attach again.
+.Cm wait
+tries again for up to 60 seconds or its timeout and then returns 75 with
+outcome unavailable.
+.Cm logs
+reads the record and needs no service.
+In no case is the Job cancelled.
+.El
+.Pp
+With
+.Fl -pty
+the terminal is in raw mode, so Ctrl-C typed there is input for the Job and
+no signal to the client; the detach key leaves the terminal.
+.Pp
+.Fl -on-interrupt
+chooses what the first SIGINT or SIGTERM does to
+.Cm run
+in pipe mode:
+.Cm forward ,
+the default, as in the table;
+.Cm detach
+returns 75 at once and leaves the Job running;
+.Cm cancel
+requests cancellation and goes on waiting, so that the client returns 1 once
+the Job has ended.
+A second signal always returns 75 without waiting.
+When the Job is not running yet, a forwarded signal reaches nothing, and the
+client says so.
+Whenever the client leaves a Job behind it prints the number of the Job and
+how to wait for it and cancel it on standard error;
+.Cm run Fl -json
+then prints outcome
+.Li detached
+with exit_status 75 and job_id.
+Under
+.Ev JOB_CLI_COMPAT Ns = Ns Cm legacy
+and without
+.Fl -on-interrupt ,
+.Cm run
+installs no handlers: a signal ends the client and the Job goes on.
+.Sh STANDARD INPUT
+A Job in pipe mode reads end of file on standard input: its input is
+.Pa /dev/null .
+.Cm run Fl -stdin
+instead passes the standard input of the client to the Job and closes it when
+the client reaches end of file or ends.
+The input is not recorded.
+If no client connects within ten seconds of the start, for example because
+the client was gone while the Job waited or because a later attempt was
+started by
+.Cm retry ,
+the Job reads end of file.
+.Fl -stdin
+is refused together with
+.Fl -pty ,
+where the terminal is the input, and with
+.Fl -on .
+.Cm submit ,
+.Cm create
+and
+.Cm edit
+do not take it.
+.Sh LABELS
+.Fl -label Ar key=value
+on
+.Cm run ,
+.Cm submit ,
+.Cm create
+and
+.Cm edit ,
+and on
+.Cm queue | group create | set ,
+attaches labels to a Job, Queue or Group.
+An object carries at most 32 labels; a key has 1 to 63 characters from a-z,
+0-9, dot, underscore and dash, and a value has at most 255 bytes without
+control characters.
+Labels classify.
+They never affect scheduling, limits or any other policy, and a Queue or
+Group does not pass its labels on to what it contains.
+.Cm queue | group unset Ar path Cm label- Ns Ar key
+removes one label and
+.Cm unset Ar path Cm labels
+removes all of them;
+.Cm set
+adds to the labels already there.
+Labels appear in
+.Cm show ,
+.Cm status
+and
+.Cm list
+and in every JSON record.
+.Cm list Fl -label Ar key=value
+and
+.Cm queue | group list Fl -label Ar key=value
+keep the entries that carry the label; several must all match.
+.Sh LISTING JOBS
+.Cm list
+without options prints the held, queued and running Jobs as before.
+.Fl -all
+includes completed Jobs, and
+.Fl -state
+selects among held, queued, starting, running, suspended, stopping, succeeded,
+failed, cancelled and lost.
+The most recent 200 matching Jobs are listed unless
+.Fl -limit
+says otherwise, up to 10000; when more match, the listing says so on standard
+error and sets
+.Li more
+in JSON.
+With any of these options, or
+.Fl -label ,
+the text form is a table with the columns ID, STATE, QUEUE, SESSION, EXIT,
+LABELS and COMMAND.
+.Fl -format Cm tsv
+prints a header line and one line per Job with tab-separated columns in this
+order: id, attempt, state, queue, session, priority, submitted_ms, started_ms,
+finished_ms, exit_status, labels, command.
+An absent value is empty; labels is a JSON object and command a JSON array,
+so no column holds a tab.
+.Cm queue list
+and
+.Cm group list
+print id, path, kind, paused, closed and labels in the same way.
+Column names and state names are identifiers and are not translated.
+.Sh JOB SETS
+.Cm cancel , remove , release , retry , suspend , continue , signal ,
+.Cm reprioritize , move
+and
+.Cm wait
+take a set of Jobs: an ID, an inclusive range
+.Ar first Ns Li - Ns Ar last ,
+a comma list of IDs and ranges such as
+.Li 1,4,7-9 ,
+or several such operands, which are united.
+There is no open range.
+A reversed range, an empty item, zero, anything that is not digits, and a set
+that names more than 10000 IDs are usage errors, and nothing happens.
+.Pp
+The service resolves the set in one request.
+An ID inside a range that does not exist is skipped; an ID named on its own
+that does not exist is reported.
+A Job that cannot take the action is reported with the reason and does not
+stop the others.
+One plain ID answers as it always did.
+A set answers one line per ID, or one summary line when more than 20 IDs
+behaved the same, and with
+.Fl -json
+one object with
+.Li schema_version ,
+.Li kind
+.Pq Li job_set ,
+.Li action ,
+.Li set ,
+.Li selected
+and one entry of
+.Li results
+per ID with
+.Li id ,
+.Li outcome ,
+.Li result
+and, where there is one,
+.Li reason .
+.Pp
+The exit status is 0 when every selected existing Job took the action, 1 when
+one was refused or failed, an ID named on its own does not exist, or the set
+selects no existing Job, and 75 when a change is still pending.
+.Fl -dry-run
+answers what would happen to each Job and changes nothing.
+.Pp
+.Cm cancel
+records the set as one cancellation operation, which a restarted service
+completes;
+.Cm remove
+removes the completed Jobs of the set in one transaction.
+The other commands are done Job by Job in ID order inside the service.
+.Cm wait
+waits for every Job of the set within
+.Fl -timeout
+and returns the first status in ID order that is not 0.
+.Cm list Fl -id Ar set
+lists the Jobs of a set, in every state unless
+.Fl -state
+says otherwise.
+.Cm audit
+shows one record per set request with the set as its target and the count of
+each result.
+.Sh MOVING A WAITING JOB
+.Cm move Ar id Fl -queue Ar path
+puts a held or queued Job into another Queue.
+The destination must exist and be open, and its defaults, constraints and
+priority bounds are applied and checked as at submission.
+The Job keeps its number, attempt, submission time and accumulated waiting
+credit; a move never adds credit.
+A starting, running or ended Job is refused with a message that names its
+state.
+Every request is recorded by
+.Cm audit
+under the action move.
+.Cm edit
+remains the way to replace the command itself.
+.Sh EXPLAINING SETTINGS
+.Cm explain Ar id
+says why a Job waits.
+When a change of policy leaves a queued Job unable to start, for example a
+Group budget lowered below what the Job asks for, the reason names the
+resource and the object that holds the budget.
+.Pp
+.Cm explain Ar path Op Ar key
+explains the settings of a Queue or Group, one of them or all: the value
+configured there, the value in effect and the object that supplies it.
+A key is an option name without dashes, such as memory-max or job-cpu-limit.
+Where a setting cannot take effect as written, the reason follows: an
+ancestor sets a lower ceiling, an explicit unlimited is still bounded by an
+ancestor, a default for each Job exceeds what the subtree may hold together, a
+default request exceeds an admission budget above it, or the host lacks the
+cgroup controller.
+.Fl -json
+prints the same with key, option, configured, effective, source, takes_effect
+and reasons for each setting.
+.Sh RELIABILITY
+A submission the service has answered is on disk and survives a service crash.
+A client that lost its connection before the answer repeats the request with
+.Fl -idempotency-key
+and receives the same Job.
+No command runs before its supervisor's identity is recorded; a launch
+interrupted before that point is queued again and runs once.
+The exit status is recorded when the command exits, before cleanup.
+.Pp
+The outcome lost means the supervisor confirmed the launch and ended, and
+neither a result nor an exit status was found; the command may have run in
+part or completely. Effects of a command outside job are never exactly-once.
+.Pp
+The key is compared with a digest of what was asked for: the command, the
+working directory, the Queue, held or not, whether
+.Fl -pty
+was given, and every option that was given.
+The terminal size, the session label, environment values and the user and
+password of a proxy address are not part of it.
+.Cm edit
+of a held or queued Job with a key moves the key to the edited specification.
+.Pp
+.Cm audit
+reads the journal of mutating requests in audit/ below the state directory,
+without contacting the service. Each record has seq, at_ms, action, target,
+peer_uid, peer_pid, session, params, result and operation.
+An intent line is written before a change and a result line after it;
+a change whose result line is missing is shown as
+.Dq outcome unknown .
+A request whose intent cannot be written is refused.
+The arguments of a command are not recorded, because they often carry
+secrets: the record holds the program name, the number of arguments and the
+SHA-256 of the argument list.
+Environment values and the user and password of any address inside a string
+are not recorded.
+Requests to attach, refused peers and unreadable requests are recorded, the
+last two at most 30 times a minute.
+.Fl -target ,
+.Fl -action
+and
+.Fl -since
+select records;
+.Fl -json
+prints one object per line with schema_version.
+The journal rotates at 8 MiB and keeps eight files; the configuration table
+.Li [audit]
+sets
+.Li keep_files
+and
+.Li rotate_bytes .
+.Pp
+Client and service state the request protocol range they speak. A request
+outside the service's range, or a changing request without a version, is
+refused; the client names both ranges and exits 125.
+The service decides from the envelope before it reads the request inside it.
+.Sh OPERATIONS
+.Cm events
+reads the journal of state changes in events/ below the state directory,
+without contacting the service. There is one record for every transition of a
+Job: held, queued, starting, running, suspended, stopping, succeeded, failed,
+cancelled and lost, and requeued when a Job returns to its Queue after an
+attempt or an unconfirmed launch. Each record has seq, at_ms, kind, job,
+attempt, queue_id, queue_path, from, to, reason, exit_code, signal and, on
+starting, wait_ms. Records of kind queue, group or host describe admission:
+paused and resumed, closed and open, pressure_hold, pressure_recovering and
+pressure_open, with object_id and object_path.
+.Fl -job ,
+.Fl -queue
+and
+.Fl -since
+select records;
+.Fl -queue
+includes everything below the path.
+.Fl -format Cm json
+prints one object per line with schema_version.
+.Fl -follow
+keeps printing new records until interrupted; it looks for new records five
+times a second and goes on across rotation.
+The journal rotates at 8 MiB and keeps eight files; the configuration table
+.Li [events]
+sets
+.Li keep_files
+and
+.Li rotate_bytes .
+A record is written after the state it describes is on disk. It is forced
+to disk with every final state of a Job, every admission record and every
+rotation; a host crash can lose the records after the last of those, and a
+line cut short is skipped and counted.
+.Pp
+.Cm queue show Ar path
+and
+.Cm group show Ar path
+add the depth of the subtree: how many Jobs are held, queued, starting,
+running, suspended and stopping, how long the oldest queued Job has waited,
+and, for the Jobs started in the last hour, their number and the median and
+longest wait. The wait statistics use at most the 4096 most recent starts
+the service knows.
+.Pp
+.Cm host
+adds a health section: uptime, state schema, protocol, the number of Jobs in
+each state, how many supervisors the last start adopted and how many records
+its recovery changed, the space left in the state directory, whether the
+audit and event journals can be written, and whether limits are enforced or
+only monitored. It also reports
+.Li surrounding_limits :
+the tightest memory.max, memory.high, cpu.max and pids.max among the cgroup
+of the service and its ancestors, with the cgroup that sets each, the
+effective CPU set, and the resource limits of the service itself.
+.Cm doctor
+checks all three as health, enforcement and surrounding_limits.
+.Cm host Fl -json
+also carries
+.Li activity :
+sync_calls and job_record_writes of the service process since it started,
+starts_pending while admitted Jobs wait for their turn to be started, and
+last_change with what the last changing request itself wrote. health counts
+starter_failures, cancellations_failing and cancellation_retries.
+.Pp
+The service starts one Job at a time and answers other requests between two
+starts. A request that lets many Jobs start returns at once; each of those
+Jobs is shown as queued, waiting for its turn to start, until it is started.
+In
+.Cm status Fl -json
+admitted_ms is the time the Job was admitted and started_ms the time its
+command started, as its supervisor recorded it; started_ms is absent until
+the service has read it and never changes afterwards. Run time counts from
+started_ms, waiting time ends at admitted_ms.
+.Pp
+A service without a delegated cgroup runs in monitoring mode and its answers
+say limits watched, not enforced. There, with the ordinary profile, a Job
+that asks for
+.Fl -mem ,
+.Fl -pids
+or a cgroup control is refused with a capability error. See
+.Xr jobd 8 .
+.Pp
+A member of the socket group who cannot read the state directory gets the
+output of
+.Cm run ,
+.Cm logs
+and
+.Cm log
+from the service, and
+.Cm attach
+reaches the terminal through the runtime directory.
+.Sh CONFIGURATION
+.Cm config check Ar file
+validates a TOML configuration without contacting the service.
+.Cm config init Fl -profile Cm ordinary | legacy Ar file
+creates a configuration without overwriting an existing file.
+.Cm config show Op Fl -json
+prints the running effective configuration and source as JSON.
+.Cm config reload
+requires drained Jobs and preserves the service profile.
+Changing profile requires a drained restart.
+.Sh AUTOMATION
+Three commands serve a program that runs shell commands on somebody's behalf.
+They are left out of
+.Cm job help .
+.Pp
+.Cm classify
+reads one command line, or one JSON object with command, per line of standard
+input and prints direct, or route, a tab and the reason, for each.
+A line is direct when it runs only file, text and query programs, most git
+commands and job itself.
+.Pp
+.Cm policy Op Ar name
+prints allow, or deny, a tab and the name of the rule, for each line of
+standard input, by the command policy in
+.Pa policy.json ;
+see
+.Xr job.conf 5 .
+A line is a command, or a JSON object with command and optionally cwd and
+caller_name.
+.Ar name
+is the name of the caller for lines that carry none.
+.Cm policy Fl -show
+prints the policy file in use and the rules in force and reads no commands.
+Without a policy file nothing is forbidden.
+.Pp
+.Cm hook
+reads one JSON object on standard input and writes one on standard output.
+The question has command and optionally cwd, caller, caller_name and the
+boolean detached.
+The answer has decision, one of allow, deny and rewrite; reason with deny and
+rewrite; rule with a denial by the command policy; and with rewrite the
+command to run instead and detach, which is true when that command is meant
+to be started without waiting for it.
+A command the policy forbids is denied.
+A command that
+.Cm classify
+calls route, and a
+.Cm run
+or
+.Cm wait
+that would hold its caller, is rewritten to a
+.Cm run
+with
+.Fl -summary .
+Nothing is executed.
+Input that is not a JSON object with a command ends with status 125.
+.Sh DOCTOR
+.Cm doctor
+checks this host and the service setup and prints one line per check:
+.Cm ok ,
+.Cm warn
+or
+.Cm fail ,
+the name of the check, what was found and, where something is to be done,
+what to do.
+It runs without the service, changes nothing and takes no lock.
+.Fl -system
+reports on the system service.
+With the service running it also reports the cgroup root the service chose
+and compares the service's version and protocol with its own.
+The checks cover the file locations, the configuration, the state directory
+and its schema, the service lock and socket, access through a socket group,
+cgroup v2 delegation and controllers, the freezer, pressure files, user
+namespaces, Landlock, seccomp, capabilities, process handles, the network
+tools, the service manager and, for a systemd user service, lingering.
+.Pp
+.Fl -json
+prints an object with
+.Cm schema_version
+1 and an array
+.Cm checks
+of objects with
+.Cm name ,
+.Cm status ,
+.Cm detail
+and
+.Cm fix ,
+which is null when nothing is to be done.
+The exit status is 0 when no check failed and 1 otherwise; a service that
+does not answer is a failed check.
+.Sh STATE MAINTENANCE
+State maintenance requires the service to be stopped.
+.Cm state validate Fl -source Ar directory
+prints a JSON inventory and readiness report.
+.Cm state backup Fl -source Ar directory Fl -destination Ar backup
+creates a verified backup of the state of a stopped service.
+Held and queued Jobs are copied as they are and wait again on the restored
+service.
+Records of Jobs that are starting, running, suspended or stopping are refused
+unless
+.Fl -interrupted
+is given, which copies them as they are once their supervisors have ended;
+the restored service records each of them as lost when it starts.
+.Cm state migrate Fl -source Ar directory Fl -destination Ar destination
+.Fl -backup Ar backup Fl -profile Cm ordinary | legacy
+backs up the source and publishes converted state in a new directory.
+Add
+.Fl -dry-run
+to print the inventory without copying or converting data.
+.Pp
+.Cm state restore Fl -source Ar backup Fl -destination Ar destination
+verifies the backup and restores its original files into a new directory.
+Backup and destination directories must not already exist or overlap the source.
+Live network helpers, a pending cancellation and a pending resource update
+prevent backup and conversion.
+Conversion with
+.Cm state migrate
+also requires that no Job is held, queued or executing.
+Maintenance never stops those processes.
+The service lock may be created while inspecting state.
+.Pp
+Migration preserves original source data, Job IDs, outcomes and logs, and
+converts legacy serial Queues into explicit concurrency settings.
+Removed historical Queues receive retired identities.
+Set
+.Ev JOB_CONFIG
+to the generated migration-config.toml when starting converted state.
+Older binaries require the original backup format for rollback.
+.Sh PROCESS PLACEMENT AND LIMITS
+.Fl -cpu-affinity Ar LIST|inherit
+selects a Linux CPU list, for example 0-3,8.
+.Fl -numa-policy Ar inherit|default|local|bind:LIST|interleave:LIST|preferred:N
+sets the task policy for future memory allocations. Node IDs are physical IDs.
+Placement is inherited by children; it does not provide cpuset containment or
+exclusive CPUs, and applications may change their own placement.
+Explicit masks must be available and read back exactly at launch.
+.Pp
+.Fl -rlimit Ar NAME=SOFT:HARD
+sets an inherited process resource limit. One value sets both soft and hard limits.
+Each bound accepts inherit or unlimited; bytes accept binary K/M/G suffixes.
+Resources as, core, data, fsize, memlock, msgqueue and stack use bytes;
+cpu uses CPU seconds; rttime uses microseconds; other resources use integers.
+Supported count/scheduling resources are nofile, nproc, sigpending, nice and rtprio.
+The nproc, sigpending and msgqueue accounting scopes include the real user ID,
+not only this Job. rss and locks are refused because modern Linux does not enforce them.
+Hard-limit increases remain subject to operating-system privilege checks.
+.Pp
+Queue and Group defaults use --job-cpu-affinity, --job-numa-policy and --job-rlimit.
+Each rlimit resource inherits separately. Use unset job-rlimit-nofile to remove
+that local default, or nofile=inherit to preserve the supervisor's inherited values.
+Profiles use cpu_affinity, numa_policy and rlimit_NAME={soft=VALUE,hard=VALUE}.
+These settings affect future launches; update remains a cgroup-control operation.
+Remote execution applies placement and rlimits at the destination, leaving the
+local SSH transport unchanged. Host --json reports allowed IDs and inherited limits;
+status --json records verified explicit launch controls in result.process_controls.
+.Sh SECURITY CONTROLS
+.Fl -no-new-privs Ar yes|inherit
+sets the no_new_privs attribute before the program starts, so that neither it nor
+its descendants gain privileges through set-user-ID, set-group-ID or file capabilities.
+.Pp
+.Fl -cap-drop Ar NAME,...|all|inherit
+removes capabilities from the effective, permitted, inheritable and ambient sets.
+The bounding set is reduced as well where the launch enters a user namespace of its
+own or the service is privileged; result.security_controls.cap_bounding_reduced
+records which. A service running as an ordinary user starts programs without
+capabilities already.
+.Pp
+.Fl -seccomp-deny Ar NAME,...|inherit
+installs a filter under which each named system call of the native ABI fails with
+EPERM; clone3 fails with ENOSYS so that the C library falls back to clone.
+Each name is one system call; related calls must be named separately.
+A program of another ABI is killed when it makes a system call under a filter.
+This is a deny list, not a sandbox.
+.Pp
+Capability reduction and a filter set no_new_privs and are refused together with
+--no-new-privs inherit. Queue and Group defaults use --job-no-new-privs,
+--job-cap-drop and --job-seccomp-deny; a Job may override them, and unset
+job-seccomp-deny removes a local default. Profiles use no_new_privs, cap_drop and
+seccomp_deny. Host --json lists supported names under security_controls.
+Remote execution applies these controls, confinement and --net none at the
+destination, leaving the local SSH transport unchanged.
+These controls do not separate Jobs of the same Unix user from each other.
+.Sh ISOLATION
+.Fl -namespaces Ar LIST|inherit
+starts the program in new namespaces of the named kinds: user, mount, pid, ipc,
+uts and cgroup, separated by commas. Nothing is added to the list. A service
+without privilege needs user in every list. The network namespace is chosen with
+--net.
+.Pp
+With pid the Job runs in a PID namespace of its own and gets a fresh /proc, so
+pid needs mount in the same list. The program sees only the Job's processes and
+has a small process number; every process of the Job ends with the Job. Number 1
+inside is job-init, a part of job that never executes another program. It starts
+the command, reports its exit status or fatal signal unchanged, reaps orphans,
+and forwards a signal sent to number 1 from inside to the command's process
+group. Signal, cancel, suspend and continue reach the Job's processes as before,
+and each signal arrives once. Processes left when the command exits are counted
+and named in the result and then killed; helper programs otherwise kept end with
+the namespace. job-init is one more process for --pids-max and --rlimit nproc.
+Security controls, limits and confinement apply to the command and not to
+job-init. status --json records proc, init_pid and command_pid under
+result.isolation_controls.pid_namespace; host --json reports
+pid_namespace_requestable and pid_namespace_error. A PID namespace hides
+processes and is not a security boundary against the same Unix user.
+.Pp
+.Fl -root Ar read-only|inherit
+makes every mount the Job sees read-only, including the working directory, /proc,
+/sys and /dev/shm. It needs --namespaces user,mount.
+.Pp
+.Fl -writable Ar PATH,...|inherit
+keeps up to 32 existing absolute paths writable under a read-only root.
+It needs --root read-only. A path is resolved once when the Job starts; behind a
+symbolic link the directory it leads to is made writable and recorded. With
+--confine the writable paths are added to what the Job may write.
+.Pp
+.Fl -private-tmp Ar yes|inherit
+gives the Job an empty /tmp and /var/tmp of its own, deleted when the Job ends.
+It needs --namespaces user,mount. A writable path or a working directory under
+/tmp or /var/tmp is refused with it. A private tmp that cannot be deleted is
+moved to private-tmp-leftovers in the state directory and named in a note on the
+result.
+.Pp
+A service that runs as root refuses --root read-only and --private-tmp yes unless
+the Job drops the capability sys_admin (--cap-drop sys_admin or --cap-drop all),
+because the Job could otherwise undo them.
+.Pp
+The namespaces are entered after the network setup and before confinement,
+placement, limits and security controls. Before the program starts each requested
+namespace, the read-only root, the writable paths and the private tmp are read
+back; a step that fails is named in the start error and the program is not executed.
+Queue and Group defaults use --job-namespaces, --job-root, --job-private-tmp and
+--job-writable; a Job may override them, and unset job-namespaces removes a local
+default. Profiles use namespaces, root, private_tmp and writable. Host and host
+--json report what the host offers under isolation_controls; status --json records
+what was applied in result.isolation_controls. Remote execution applies these
+controls at the destination, leaving the local SSH transport unchanged.
+A mount namespace is not a container, and these controls do not separate Jobs of
+the same Unix user from each other.
+.Sh OUTPUT QUOTAS
+.Fl -output-head Ar SIZE
+and
+.Fl -output-tail Ar SIZE
+set how much of the beginning and of the end of each recorded stream is kept.
+SIZE takes K, M or G and lies between 1M and 1G; there is no unlimited value,
+because an unbounded recording can fill the disk.
+Queue and Group defaults use --job-output-head and --job-output-tail; a Job may
+override them, and unset job-output-head or job-output-tail removes a local
+default. Profiles use output_head_bytes and output_tail_bytes, and
+.Xr job.conf 5
+sets service defaults. Without any of these the recording keeps the first and
+the last 32 MiB of all streams together, as before.
+.Pp
+The head is counted as stored, with 32 bytes per recorded chunk. The tail keeps
+at least SIZE and at most 2 MiB more. Status prints the quota, the origin of
+each value and the bytes removed per stream; with
+.Fl -json
+they are under spec.declared, resource_sources and result.output_retention.
+Logs prints a notice at each gap naming the stream, the bytes removed and the
+quota. A remote Job is recorded at the destination and again locally, each
+with the quota resolved for it.
+.Pp
+The service removes whole recordings of completed attempts, oldest first, while
+all recordings together exceed budget_bytes. A running Job's recording is
+counted and never removed. A removed recording says so in logs and status.
+.Sh NETWORK BOUNDARIES
+.Fl -net Cm default
+leaves the Job in the host's network.
+.Fl -net Cm none
+starts it in a network namespace of its own that holds only a loopback
+interface: no IPv4, no IPv6, no name resolution.
+.Pp
+A proxy, a WireGuard tunnel or a bandwidth gives the Job a network namespace of
+its own behind a filtering namespace. With a proxy, only TCP to the proxy's
+address and port is forwarded; IPv6, UDP, ICMP and direct name resolution do not
+leave the Job, and names are resolved by the proxy. With
+.Cm wireguard:FILE
+only the tunnel is forwarded, and name resolution uses the DNS lines of
+.Ar FILE .
+When the proxy or the peer stops answering, the Job has no network; nothing
+falls back to a direct connection. The proxy variables the Job receives
+(ALL_PROXY, and HTTP_PROXY and HTTPS_PROXY for an HTTP proxy) tell programs
+where the proxy is; the boundary is the namespace, not the variables.
+.Pp
+A Job outside a Queue that sets a network or a bandwidth gets a filtering
+namespace of its own, removed when it ends. The Jobs of a Queue that sets a
+proxy, a tunnel or a bandwidth share one filtering namespace, one exit and one rate budget; each has its own
+network namespace and address, and they cannot reach each other.
+.Pp
+A proxy's user and password are given in
+.Fl -net-secret-file
+or, for compatibility, inside the address. Every answer, listing, record and
+log shows them as ***. The Job itself receives them in its proxy variables;
+other clients of the service do not. Written inside the address they are
+visible in the arguments of the submitting command while it runs, so prefer
+the file. Inside the address they are USER:PASSWORD with @, / and spaces
+percent-encoded. Records of Jobs that ended under an earlier version keep their
+address on disk and are shown with ***; records of waiting and running Jobs are
+rewritten when the service starts. An idempotency key ignores the user and
+password. The service itself checks the proxy scheme and port and refuses
+relative file paths. A Queue or Group takes
+.Fl -net-secret-file
+beside
+.Fl -net .
+The required tools are unshare, nsenter, sleep, ip, tc, nft and slirp4netns;
+without them, or without user namespaces, such a Job is refused at submission.
+.Pp
+.Fl -net Cm ns:NAME
+starts the Job in an existing network namespace.
+.Ar NAME
+is an entry under network.namespaces in the service configuration; a client
+selects a name and never gives a path, and every admitted client can select
+every name. The service checks at submission that the file is a network
+namespace and that it can join it, and at launch that the process is in the
+namespace the configuration names. A namespace made by root belongs to the
+initial user namespace, and a service without that privilege is refused with
+the kernel's reason; an ordinary-user service joins a namespace that its own
+user made in a user namespace, named with user_namespace. Every Job that
+selects the name shares the namespace with the others and with whatever else is
+in it.
+.Nm
+adds no packet filter, name resolution or bandwidth limit there:
+.Fl -bandwidth
+and
+.Fl -net-secret-file
+together with it are refused.
+.Pp
+.Fl -net Cm profile:NAME
+applies a routing profile from network.profiles in the service configuration:
+one exit (the host, none, a proxy, a WireGuard tunnel or a configured
+namespace), destination rules allow and deny for IPv4 addresses, ports and TCP
+or UDP, resolver addresses, bandwidth, and sharing. Deny wins over allow, and
+allow narrows what the exit forwards. With sharing per-job each Job has a
+filtering namespace of its own; with per-queue the Jobs of one Queue share one,
+and with shared all Jobs of the profile do. Jobs that share one keep a network
+namespace each, cannot reach each other, and share the exit and the rate
+budget. A Queue, a Group and a pinned execution profile can name a profile or
+a namespace too. A Job's
+.Fl -bandwidth
+may be narrower than the profile's and not wider.
+.Fl -net-secret-file
+together with a profile that names its own secret file is refused.
+The Job record keeps the name; the launch records the digest of the definition
+and the rules it applied under network in
+.Cm status Fl -json ,
+and
+.Cm explain
+shows them. A Job whose profile was removed before it started ends with a
+start error that names the profile.
+.Pp
+.Cm net list
+prints the configured namespaces and profiles and whether this host can use
+them;
+.Cm net show Ar name
+prints one with its rules and sharing.
+.Cm host Fl -json
+holds the same under network. Neither shows the content of a secret file.
+.Sh OUTPUT RECORDING
+.Cm logs Ar ID
+reads a snapshot of retained output. Add
+.Fl f
+or
+.Fl -follow
+to follow until that attempt ends. Readers keep the selected attempt across retry.
+.Fl -attempt Ar N
+selects an earlier retained attempt.
+.Fl -stream Ar all|stdout|stderr|combined|diagnostic
+selects sources. PTYs and older recordings have no separate stdout or stderr.
+Normal rendering escapes terminal controls and non-ASCII bytes; newline and tab remain.
+.Fl -raw
+preserves bytes.
+.Fl -json
+emits versioned JSON lines with sequence, capture time, source and byte arrays.
+.Fl -since-ms Ar N
+and
+.Fl -until-ms Ar N
+filter inclusive Unix epoch milliseconds. Older recordings have no timestamps.
+.Fl -grep Ar TEXT
+selects matching lines per source; lines exceeding 65536 bytes are processed as
+bounded fragments. It cannot be combined with JSON.
+.Pp
+Retention keeps the first 32 and latest 32 one-MiB segments. Removed records are
+reported as gaps; observation order across streams is not application write order.
+A slow or disconnected reader does not stop collection. Native run uses raw
+output; a closed output never cancels the Job:
+.Cm run
+returns 75 and
+.Cm logs
+ends with status 125.
+A finite run budget returns 75 while the Job continues.
+The first interrupt of a pipe-mode
+.Cm run
+is forwarded to the Job, see
+.Sx ATTACHED RUNS AND DETACHED SUBMISSIONS ;
+ending a
+.Cm logs
+or
+.Cm wait
+client does not signal the workload.
+PTY attach continues to forward terminal input, including control-C.
+
+.Sh ENVIRONMENT
+.Bl -tag -width JOB_DETACH_KEY
+.It Ev JOB_DETACH_KEY
+Detach key of an attached terminal client, as for
+.Fl -detach-key .
+.El
+.Bl -tag -width JOB_CGROUP_ROOT
+.It Ev JOB_CONFIG
+Explicit configuration path for the service.
+.It Ev JOB_STATE_DIR
+Select the state directory shared by service and clients.
+The service socket is then daemon.sock inside it unless
+.Ev JOB_RUNTIME_DIR
+is set.
+.It Ev JOB_RUNTIME_DIR
+Directory of the service socket job.sock, shared by service and clients.
+.It Ev JOB_CACHE_DIR
+Cache directory; nothing is stored there yet.
+.It Ev JOB_SYSTEM
+The value 1 selects the system service and its locations, see
+.Xr jobd 8 .
+The option
+.Fl -system
+written before the command does the same for one invocation.
+.It Ev XDG_STATE_HOME
+Default parent of the job state directory; otherwise ~/.local/state is used.
+When an exec store also exists, explicitly migrate it or select JOB_STATE_DIR.
+.It Ev XDG_RUNTIME_DIR
+Default parent of the socket directory job; without it the socket is
+daemon.sock in the state directory.
+.It Ev JOB_SESSION
+Default descriptive session label; without it the label is unnamed.
+.It Ev JOB_CLI_COMPAT
+Absent or unix selects literal arguments and quiet wait.
+The explicit value legacy preserves the previous single-argument Bash rule,
+summary output and unwrapped wait JSON during CLI migration.
+This is independent of the service's resource compatibility profile.
+.It Ev JOB_CGROUP_ROOT
+Delegated cgroup v2 tree, named explicitly. Without it the service discovers
+the delegated cgroup it was started in, see
+.Xr jobd 8 .
+Without a usable tree, limits are watched rather than enforced by cgroups.
+.It Ev JOB_FAILPOINT
+For tests only: a comma-separated list of named points at which the service
+or a supervisor ends itself or fails one write. Unset, it does nothing.
+.El
+.Sh HELP AND COMPLETION
+Without arguments, and with
+.Cm help
+or
+.Fl -help ,
+.Nm
+prints one screen of commands by section.
+Every command accepts
+.Fl -help
+or
+.Fl h
+before the option delimiter and then prints its usage line, options, operands
+and exit statuses without contacting the service.
+.Cm help Ar command
+prints the same,
+.Cm help Fl -all
+the long text of every part, and
+.Cm help Fl -syntax
+the syntax reference as Markdown.
+Help, completion and the reference are produced from one command definition.
+An option a command does not have is refused with one message that names the
+option and the command.
+.Cm log
+and the earlier queue spellings keep their own reading of arguments.
+.Pp
+.Cm completion Cm bash | fish
+prints a completion script.
+It completes commands, options and listed values without the service.
+Job identifiers and queue and group paths are asked from the service by a
+query that gives up after about a third of a second and then offers nothing.
+Commands that act on waiting or running work are offered the held, queued and
+running jobs;
+.Cm show ,
+.Cm status ,
+.Cm logs ,
+.Cm log
+and
+.Cm attempts
+are offered completed jobs as well, and
+.Cm retry
+and
+.Cm remove
+only completed ones, the most recent 200.
+.Pp
+.Cm list
+prints the held, queued and running jobs,
+.Fl -queue Ar path
+those of one queue; see
+.Sx LISTING JOBS .
+.Cm show Ar id
+is
+.Cm status Ar id .
+.Sh STRUCTURED OUTPUT
+A command that accepts
+.Fl -json
+and prints one document also accepts
+.Fl -format Cm json .
+It prints one line holding an object with
+.Li schema_version
+1,
+.Li kind
+naming the command, and
+.Li data
+holding what
+.Fl -json
+prints.
+.Fl -json
+alone prints what it printed before.
+When a command fails before it has a document,
+.Cm run
+and
+.Cm wait
+keep their result shape with
+.Li outcome
+.Li usage_error
+or
+.Li service_error ;
+other commands print kind
+.Li error
+with
+.Li command ,
+.Li outcome ,
+.Li exit_status
+and
+.Li error .
+.Cm logs Fl -json
+prints a stream of records, one object per line, and has no envelope.
+.Cm audit Fl -json
+is such a stream too;
+.Cm audit Fl -format Cm json
+prints one envelope whose data holds schema_version, entries and unreadable.
+.Cm submit Fl -json
+prints the Job number as before, and
+.Cm submit Fl -format Cm json
+wraps the Job record.
+.Cm cancel ,
+.Cm release ,
+.Cm move ,
+.Cm doctor
+and
+.Cm queue | group pause | resume
+have an envelope as well.
+A command that refuses its arguments before any request reaches the service
+reports outcome
+.Li usage_error ;
+.Li service_error
+means that the service was asked and refused or could not be reached.
+.Cm list ,
+.Cm queue list
+and
+.Cm group list
+also take
+.Fl -format Cm tsv .
+.Pp
+Output carries no colour and no terminal formatting, whether it goes to a
+terminal or is redirected, and no option or environment variable changes
+that.
+The bytes a Job writes are passed on as they are.
+.Sh EXIT STATUS
+.Bl -tag -width "128+S"
+.It 0
+Success.
+.It N
+.Cm run ,
+.Cm wait ,
+.Cm show ,
+.Cm status
+and
+.Cm attach
+return the exit status of the job itself.
+.It 128+S
+The job was ended by signal S.
+.It 1
+The job was cancelled or stopped by the service.
+For
+.Cm cancel ,
+.Cm suspend ,
+.Cm continue ,
+.Cm remove ,
+.Cm update ,
+.Cm resource-update
+and their queue and group forms: the request was refused or a member failed.
+.It 75
+A deadline passed while the job was pending or running, the service stayed
+unavailable while waiting, the job shown is still pending or running, or a
+requested change is still pending.
+.Cm run
+also returns 75 when its client left the job running after a second
+interrupt, a hangup or a closed output.
+.It 125
+Service failure, lost job, start error, or usage error.
+.El
+.Pp
+A job may itself exit with 1, 75 or 125; the outcome in the structured result of
+.Cm run
+and
+.Cm wait
+tells the cases apart.
+Compatibility mode retains the prior status and output contract.
+An attached client returns zero after a local detach; connection errors return
+125 and the job may still be running.
+Each command lists its own statuses under
+.Fl -help .
+.Sh EXAMPLES
+.Bd -literal -offset indent
+job submit --pty -- java -jar server.jar nogui
+job attach 42
+
+job run --pty -- bash
+ssh -t user@host job attach 42
+
+job log 42 tail 50
+job cancel 42
+.Ed
+.Sh SEE ALSO
+.Xr job.conf 5 ,
+.Xr job 7 ,
+.Xr jobd 8 ,
+.Xr bash 1 ,
+.Xr ssh 1 ,
+.Xr termios 3 ,
+.Xr pty 7

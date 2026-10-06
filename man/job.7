@@ -1,0 +1,248 @@
+.Dd October 6, 2026
+.Dt JOB 7
+.Os
+.Sh NAME
+.Nm job
+.Nd concepts of the job execution and scheduling service
+.Sh DESCRIPTION
+.Nm
+runs commands through a local service,
+.Xr jobd 8 ,
+so that a command does not depend on the terminal that started it, can wait
+for its turn, can be held to stated resources and leaves a record.
+This page explains the ideas the commands in
+.Xr job 1
+and the settings in
+.Xr job.conf 5
+are built on.
+.Sh OBJECTS
+There are three kinds of object.
+.Bl -tag -width "Queue"
+.It Job
+One execution of one command with its arguments, environment and working
+directory.
+A Job has a number that is never used again.
+.It Queue
+A collection of Jobs.
+A Job belongs to exactly one Queue; Jobs submitted without a Queue belong to
+the default Queue.
+.It Group
+A collection of Queues and Groups.
+Groups form a tree whose root is
+.Pa / .
+.El
+.Pp
+Queues and Groups are named by paths such as
+.Pa development/builds .
+Renaming or moving one keeps its identity and is refused while Jobs in it run.
+A Queue or Group without settings organizes and does nothing else: it adds no
+limit, no ordering rule and no kernel resource domain.
+.Pp
+A Job, a Queue and a Group can carry labels, pairs of a key and a value.
+Labels classify without giving an object a second parent: a Job still belongs
+to one Queue and a Queue to one Group.
+They are never read by scheduling or by any policy and are not inherited.
+.Pp
+A held or queued Job can be moved to another Queue with
+.Cm job move .
+It keeps its number, its submission time and its waiting credit, and the
+destination is checked as at submission.
+.Sh INHERITANCE
+A setting on a Queue or Group is either a constraint on its whole subtree or
+a default for the Jobs in it.
+.Pp
+A constraint, such as
+.Fl -max-running ,
+a priority bound, a shared CPU or memory ceiling, a pause or a closed state,
+applies together with the constraints of every ancestor.
+A child cannot widen what a parent allows.
+.Pp
+A default has a name beginning with
+.Fl -job- ,
+such as
+.Fl -job-memory-max .
+A Job takes the nearest value on the way from its Queue to the root unless it
+states its own.
+Defaults are resolved when a Job is submitted, edited or retried; changing a
+default later does not rewrite Jobs that already exist.
+.Cm unset
+removes a local value and lets the inherited one show again.
+.Cm show Fl -json
+names the source of every effective setting.
+.Sh LIFECYCLE AND ATTEMPTS
+A Job is created held or submitted directly.
+A held Job can be edited and waits for
+.Cm release .
+A released Job is queued until it is admitted, then it runs, then it ends
+with one of four outcomes: success, failure, cancellation or lost execution.
+Lost means the service can no longer account for the supervisor, for example
+after a reboot; the command may have done part of its work.
+.Pp
+The states are held, queued, starting, running, suspended, stopping and the
+four outcomes succeeded, failed, cancelled and lost.
+Records written before the outcomes were told apart carry an eleventh state,
+Finished.
+No current version writes it.
+It is read from old records only and is shown as succeeded when the exit
+status was zero and nothing stopped the Job, as cancelled or lost when the
+recorded stop says so, and as failed otherwise.
+.Pp
+.Cm retry
+runs a finished Job again under the same number as a new attempt.
+Each attempt keeps its own specification, result and retained output.
+.Cm cancel
+asks for a managed end: a termination signal, and a kill after a deadline.
+.Cm signal
+delivers one signal to the processes of the workload and decides nothing
+else.
+.Cm suspend
+and
+.Cm continue
+freeze and thaw a running workload through its cgroup; a suspended Job keeps
+its memory and its place.
+.Cm remove
+deletes the records of finished Jobs and never ends work.
+.Pp
+Each running Job has a supervisor process of its own.
+The supervisor, not the service, owns the command, its output and its
+terminal, which is why the service can be restarted while Jobs run.
+.Sh SCHEDULING
+Admission is the decision that a waiting Job may start.
+Without settings, Jobs start in arrival order, and a Job that cannot start yet
+does not hold back one that can.
+.Pp
+The optional rules are separate from each other: a concurrency ceiling
+.Pq Fl -max-running ,
+a priority from \-1000 to 1000, aging that raises the rank of work that has
+waited, strict arrival order within a subtree, backfill protection for an
+ordered Job that waits for capacity, and fair share between sibling
+collections by requested CPU time or memory time.
+.Cm job explain
+says why a Job waits.
+.Pp
+Priority orders waiting work only.
+It never preempts a running Job and never changes how the kernel divides CPU
+or I/O between running Jobs.
+.Sh RESOURCES
+Four ideas are kept apart.
+.Bl -tag -width "request"
+.It request
+An amount counted at admission, such as
+.Fl -cpu-request
+or
+.Fl -memory-request .
+It reserves nothing in the kernel and guarantees nothing.
+.It limit
+A ceiling the kernel enforces, such as
+.Fl -cpu-limit ,
+.Fl -memory-max ,
+.Fl -pids-max
+for the number of processes and threads, or an I/O rate per device.
+.It weight
+A relative share under contention, such as
+.Fl -cpu-weight .
+.It measurement
+What a Job actually used, reported with its result.
+.El
+.Pp
+A request sets no limit and a limit makes no request.
+A limit or weight on a Group or Queue covers its subtree as one shared
+domain; the
+.Fl -job-
+form gives each Job its own.
+Limits and weights need a delegated cgroup with the matching controller.
+Where that is missing, a Job that asks for one is refused instead of being
+run without it.
+.Cm job host Fl -json
+and
+.Cm job doctor
+list what a host offers.
+.Pp
+The earlier option
+.Fl -pids
+keeps its meaning: it counts the processes at admission and limits the Job to
+them.
+.Fl -write-budget ,
+earlier
+.Fl -disk ,
+is a count of bytes written, after which the service stops the Job.
+It is not a file system quota; the service sets none and says so in
+.Cm job host Fl -json .
+.Sh PRESSURE
+Linux reports how much time work was stalled for CPU, memory or I/O, as
+pressure stall information.
+.Cm job pressure
+shows it for the host or for one running Job.
+.Pp
+A pressure rule is optional and explicit.
+It names a resource, a threshold and its timing, and while the threshold is
+exceeded it holds new starts and later restores concurrency step by step.
+A rule never ends or suspends running work, and no rule exists by default.
+Pressure says that work was delayed, not what caused the delay.
+.Sh PROFILES AND CLASSES
+A scheduling class is a named priority.
+An execution profile is a named set of defaults, such as requests, limits,
+launch settings and a class, that may extend other profiles.
+Both carry a revision, are defined in
+.Xr job.conf 5
+and are selected by name and revision.
+A Job records the definition it used, so a later revision does not change
+what an earlier attempt meant.
+Nothing selects a profile or class implicitly.
+.Sh ISOLATION AND SECURITY
+Every Job runs as the Unix user of the service.
+Jobs of one service are not protected from each other by default.
+.Pp
+The optional launch settings each do one thing: a private network namespace
+.Pq Fl -net Cm none ,
+a network reached only through a proxy or tunnel, a bandwidth ceiling,
+confinement of file writes with Landlock
+.Pq Fl -confine ,
+CPU and memory-node placement, per-process resource limits,
+.Dv no_new_privs ,
+removal of capabilities and a deny list of system calls.
+A setting that was asked for and cannot be established refuses the Job
+before its command starts.
+None of them is a sandbox by itself, and a deny list removes the named calls
+and nothing more.
+.Sh OUTPUT
+The supervisor records standard output and standard error as separate
+streams with the time of capture, or one combined stream for a terminal.
+.Cm job logs
+reads them during and after the run.
+Retention is bounded: the beginning and the latest part of a long stream are
+kept and the gap between them is reported.
+A reader that is slow or gone never stops the command.
+.Sh TERMINALS
+A Job started with
+.Fl -pty
+runs on a pseudo-terminal owned by its supervisor.
+Any admitted client may
+.Cm attach ;
+all attached clients see the same screen and may all type.
+There is no owner of the input.
+Detaching, or losing the connection, leaves the program running.
+.Sh ACCESS MODEL
+The Unix socket of the service is the access boundary.
+A client that is admitted has full control over every Job, Queue, Group and
+terminal of that service; there are no roles and no per-object permissions.
+Session and creator labels describe, they do not authorize.
+.Pp
+By default only the service user is admitted.
+A service may share its socket with one Unix group; members can then submit
+and control work, which still runs as the service user.
+The state directory stays private.
+A member who cannot read it receives output from the service over the socket
+and reaches terminals through sockets in the runtime directory.
+The audit journal and the event journal are read from the state directory
+and remain with the service user.
+See
+.Xr jobd 8 .
+.Sh SEE ALSO
+.Xr job 1 ,
+.Xr job.conf 5 ,
+.Xr jobd 8 ,
+.Xr cgroups 7 ,
+.Xr landlock 7 ,
+.Xr namespaces 7 ,
+.Xr pty 7

@@ -1,0 +1,6 @@
+    Checking demo v0.1.0 (/work/demo)
+src/lib.rs:1:41: warning: unused variable: `unused`: help: if this is intentional, prefix it with an underscore: `_unused`
+src/lib.rs:1:57: warning: unused variable: `also`: help: if this is intentional, prefix it with an underscore: `_also`
+src/lib.rs:2:4: warning: function `dead` is never used
+warning: `demo` (lib) generated 3 warnings (run `cargo clippy --fix --lib -p demo -- ` to apply 2 suggestions)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.12s

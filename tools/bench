@@ -1,0 +1,21 @@
+#!/bin/sh
+set -eu
+ROOT=$(cd "$(dirname "$0")/.." && pwd)
+if [ $# -lt 1 ]; then
+    echo "usage: tools/bench OUTPUT.jsonl [--backend watch|cgroup] [--only submit|dispatch|idle|large|output]" >&2
+    echo "run it through job with a reservation: job run --cores 8 --mem 4G -- tools/bench OUTPUT.jsonl" >&2
+    exit 125
+fi
+output=$1
+shift
+case $output in
+    /*) ;;
+    *) output=$PWD/$output ;;
+esac
+if [ -e "$output" ]; then
+    echo "tools/bench: $output exists; choose a new file" >&2
+    exit 125
+fi
+cd "$ROOT"
+echo "tools/bench: load average $(cut -d' ' -f1-3 /proc/loadavg), $(nproc) CPUs"
+exec cargo bench --quiet --bench release -- --output "$output" "$@"

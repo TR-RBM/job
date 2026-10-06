@@ -1,0 +1,34 @@
+#!/bin/sh
+set -eu
+ROOT=$(cd "$(dirname "$0")/.." && pwd)
+cd "$ROOT"
+skip() {
+    if [ "${JOB_REQUIRE_DELEGATED:-0}" = 1 ]; then
+        echo "tools/check-delegated: failed: no delegated cgroup: $1" >&2
+        exit 1
+    fi
+    echo "tools/check-delegated: skipped: no delegated cgroup: $1"
+    exit 0
+}
+relative=$(sed -n 's/^0:://p' /proc/self/cgroup)
+[ -n "$relative" ] || skip "this process is not in a cgroup v2 hierarchy"
+[ "$relative" != / ] || skip "this process is in the root cgroup"
+group=/sys/fs/cgroup$relative
+[ -d "$group" ] || skip "$group is not visible"
+[ -w "$group/cgroup.procs" ] || skip "$group/cgroup.procs is not writable"
+[ -w "$group/cgroup.subtree_control" ] || skip "$group/cgroup.subtree_control is not writable"
+controllers=$(cat "$group/cgroup.controllers")
+for controller in cpu memory pids; do
+    case " $controllers " in
+        *" $controller "*) ;;
+        *) skip "$group does not have the $controller controller" ;;
+    esac
+done
+[ -z "$(cat "$group/cgroup.subtree_control")" ] || skip "$group already hands controllers to children"
+probe=$group/job-check-delegated-$$
+mkdir "$probe" 2> /dev/null || skip "$group does not allow a child cgroup"
+rmdir "$probe"
+echo "tools/check-delegated: delegated cgroup $group with $controllers"
+cargo test --quiet --test freezer -- --ignored --test-threads=1
+cargo test --quiet --test linux_integration -- --ignored --test-threads=1
+echo "tools/check-delegated: passed"

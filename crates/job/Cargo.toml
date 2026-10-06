@@ -1,0 +1,24 @@
+[package]
+name = "job"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+libc = "0.2"
+png = "0.18"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.10.9"
+toml = "0.9.8"
+vt100 = "0.16.2"
+x11rb = { version = "0.14", default-features = false, features = ["randr", "composite", "damage", "res"] }
+
+[[bench]]
+name = "pressure"
+harness = false
+
+[[bench]]
+name = "release"
+harness = false

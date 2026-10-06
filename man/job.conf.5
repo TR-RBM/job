@@ -1,0 +1,323 @@
+.Dd October 5, 2026
+.Dt JOB.CONF 5
+.Os
+.Sh NAME
+.Nm job.conf
+.Nd job service configuration
+.Sh DESCRIPTION
+The service reads a versioned TOML document.
+Unknown keys and unsupported schema versions are errors.
+The current schema accepts these fields:
+.Bl -tag -width schema_version
+.It Cm schema_version
+Required integer, currently 1.
+.It Cm profile
+Either ordinary (the default) or legacy.
+.It Cm presets.classes
+Optional array of named admission classes.
+Each requires name, positive integer revision and priority from -1000 through 1000.
+Classes cannot set kernel resource weights or limits.
+.It Cm presets.profiles
+Optional array of execution profiles with name and positive integer revision.
+Optional extends is an ordered array of parent references, each NAME@REV.
+Optional scheduling_class selects NAME@REV or none.
+Optional values contains independent resource fields (CPU in millicores,
+memory in bytes), pids, wall_ms, confine, or net equal to Host, None,
+profile:NAME or ns:NAME, where NAME is defined under network.
+Parents apply in order, followed by the profile's own fields.
+There are no implicit profile selections.
+.It Cm network.namespace_directory
+Optional absolute directory in which a namespace without an absolute path is
+looked up;
+.Pa /run/netns
+by default.
+.It Cm network.namespaces. Ns Ar NAME
+Optional table that authorizes an existing network namespace for
+.Fl -net Cm ns:NAME .
+A client can select only what is named here.
+Optional path is the namespace file: absolute, or relative to
+namespace_directory, and
+.Ar NAME
+in that directory when absent. A path under
+.Pa /proc
+or with a .. component is refused.
+Optional user_namespace is the file of the user namespace that owns it, which
+the service joins first; an ordinary-user service needs it.
+Optional resolv_conf is a file the Job sees as
+.Pa /etc/resolv.conf .
+Optional description is shown by
+.Cm job net show .
+At most 64 namespaces. Names use letters, digits, - and _.
+.It Cm network.profiles. Ns Ar NAME
+Optional table that defines a routing profile for
+.Fl -net Cm profile:NAME .
+Required egress is host, none, socks5://HOST:PORT, http://HOST:PORT,
+https://HOST:PORT, wireguard:/ABSOLUTE/FILE or ns:NAME; a user and password
+inside it are refused.
+Optional secret_file, for a proxy only, is an absolute path to a file with
+USER:PASSWORD that belongs to the service user and has mode 600.
+Optional bandwidth is the rate each way for the profile's whole network, and
+job_bandwidth for each Job, for example 10Mbit.
+Optional dns is an array of at most three IPv4 resolver addresses.
+Optional allow and deny are arrays of at most 64 rules each, written
+ADDRESS[/PREFIX][:PORT[-PORT]][/tcp|/udp] with IPv4 addresses; deny wins, and
+allow narrows what the egress forwards. An IPv6 range is refused.
+Optional sharing is per-job (the default), per-queue or shared.
+Optional description is shown by
+.Cm job net show .
+With a proxy, dns, allow and deny are refused; with none or ns:NAME every other
+key but description is refused. At most 64 profiles.
+.It Cm pressure
+Optional array of host pressure rules; absent or empty enables none.
+Each rule requires id, resource (cpu, memory or io), metric (some or full),
+window (avg10, avg60 or avg300), high_bp, low_bp, sustain_ms,
+minimum_hold_ms, recovery_ms, step_ms and required (boolean).
+Thresholds are integer basis points from 0 through 10000, with low strictly below high.
+Host CPU full is invalid.
+Each duration is an integer from 1000 through 9223372036854775807 milliseconds.
+Rule IDs contain 1 through 64 ASCII letters, digits, hyphens or underscores;
+IDs must be unique within the array, which accepts at most 32 rules.
+There are no implicit thresholds or timing values.
+.It Cm output
+Optional table. head_bytes and tail_bytes are service defaults for the output
+quota of each recorded stream, between 1M and 1G; a Queue, Group, profile or Job
+value takes precedence. Absent values leave the built-in retention.
+budget_bytes bounds all recordings of the service together and defaults to 1G;
+completed recordings are removed oldest first while the total is above it.
+Each value is an integer number of bytes or a string such as "4M".
+.It Cm terminal
+Optional table. detach_key is the key an attached client detaches with when
+neither its option nor
+.Ev JOB_DETACH_KEY
+names one: ctrl- followed by a letter or one of ], \e, ^ and _, or none.
+The default is ctrl-].
+.It Cm socket.group
+Optional name or numeric ID of one Unix group that shares the service socket.
+Absent, the socket is private to the service user.
+When set, the runtime directory gets mode 0750 and the socket mode 0660, both
+owned by the group, and a peer whose primary or supplementary groups contain
+it is admitted beside the service user.
+The service user must be a member, and the socket must lie in a runtime
+directory apart from the state directory.
+An unknown group stops the start.
+Work still runs as the service user, and the state directory stays private.
+Members get output from the service over the socket, and the terminal sockets
+of running Jobs are placed in
+.Pa terminals/
+below the runtime directory with the same group rule.
+.It Cm cgroup.root
+Optional absolute path of the cgroup v2 directory the service manages.
+.Ev JOB_CGROUP_ROOT
+takes precedence.
+Absent, the service discovers the delegated cgroup it was started in.
+A named root that holds other processes stops the start.
+.It Cm cgroup.required
+Optional boolean, false by default.
+When true, the service refuses to start without a usable delegated cgroup and
+names what is missing.
+When false and no cgroup is found, the service starts in monitoring mode:
+limits are watched, not enforced, and the start line,
+.Cm job host
+and
+.Cm job doctor
+say so.
+In monitoring mode with the ordinary profile a Job that asks for
+.Fl -mem ,
+.Fl -pids
+or a cgroup control is refused with a capability error; the legacy profile
+keeps watching
+.Fl -mem
+and
+.Fl -pids .
+A change takes effect at the next restart.
+.It Cm events.keep_files , Cm events.rotate_bytes
+Optional retention of the lifecycle event journal read by
+.Cm job events :
+how many files are kept, 8 by default, and the size at which the current file
+is closed, 8388608 bytes by default.
+Both must be at least 1.
+.Cm job config reload
+applies a change.
+.El
+.Pp
+The ordinary profile uses only explicit resource requests for admission.
+It does not synthesize resource estimates, reserve future backfill slots,
+limit process counts, disable swap or terminate work for host pressure.
+Explicit controls and enclosing operating-system limits still apply.
+Legacy command-line resource options retain their existing semantics.
+Explicit pressure rules gate new starts regardless of compatibility profile,
+without terminating or suspending running work.
+Their transient concurrency ceiling is separate from saved configuration.
+The legacy profile's emergency termination remains a separate compatibility policy.
+.Pp
+The legacy profile preserves automatic estimation, conservative backfilling,
+the default process limit, swap restriction and emergency host protection.
+It is a compatibility choice for an existing installation.
+.Sh FILES
+Configuration is selected by
+.Ev JOB_CONFIG
+when set; otherwise by
+.Pa $XDG_CONFIG_HOME/job/config.toml
+or
+.Pa ~/.config/job/config.toml
+for a user service, and by
+.Pa /etc/job/config.toml
+for a system service.
+When no location can be derived the command fails and names the variable to set.
+A missing default file selects ordinary behavior for fresh state.
+A missing explicitly selected file is an error.
+Legacy state requires an explicit configuration.
+.Sh COMMAND POLICY
+The command policy is a separate file,
+.Pa policy.json ,
+in the same directory as the configuration:
+.Pa $XDG_CONFIG_HOME/job/policy.json
+or
+.Pa ~/.config/job/policy.json
+for a user, and
+.Pa /etc/job/policy.json
+for the system.
+A user's own file is used when it exists, otherwise the system's; the two
+are never merged.
+When
+.Ev JOB_CONFIG
+is set, only
+.Pa policy.json
+beside the named configuration is read.
+.Pp
+job ships no rules.
+Without a file the policy is empty and forbids nothing.
+The file is read by
+.Cm job hook
+and
+.Cm job policy
+each time they run, so a change takes effect with the next command that is
+checked; the service does not read it and nothing is reloaded.
+.Pp
+The file is one JSON object.
+Every field is optional and an unknown field is an error.
+.Bl -tag -width protected_paths
+.It Cm rules
+Object.
+Each key is the name of a rule, each value an object with the texts
+.Cm forbids
+and
+.Cm instead ,
+which make up the refusal.
+A rule that is not named is not in force.
+.It Cm protected_paths
+Array of strings: the operands the rule rm-protected guards.
+.It Cm work_root
+Absolute directory whose entries each belong to the caller of the same name.
+.It Cm repos_root
+Absolute directory of shared checkouts that belong to no caller.
+.It Cm sudo_callers
+Array of caller names the rule sudo lets through.
+.It Cm push
+Array of objects with
+.Cm caller
+and
+.Cm remotes ,
+the remote names the rule git-push lets that caller push to.
+.El
+.Pp
+The rules are:
+.Bl -tag -width rm-recursive-force
+.It Cm rm-recursive-force
+rm with both a recursive and a force flag.
+.It Cm rm-protected
+A recursive rm of an operand in protected_paths.
+.It Cm empty-variable
+A destructive command (rm, mv, truncate, shred, recursive cp, chmod and chown,
+dd of=, find -delete) whose path holds a variable or substitution not written
+as ${NAME:?}.
+.It Cm find-root
+find starting at /.
+.It Cm kill-by-pattern
+pkill and killall.
+.It Cm no-verify
+git with --no-verify, and git commit -n.
+.It Cm pipe-to-shell
+A download with curl or wget piped into a shell.
+.It Cm sudo
+sudo and doas, unless the caller's name is in sudo_callers.
+.It Cm git-push
+git push, unless push names the caller and the remote.
+.It Cm other-worktree
+A git command that changes state under repos_root, or under an entry of
+work_root that does not carry the caller's name.
+.El
+.Pp
+.Cm job policy Fl -show
+prints the file in use and the rules in force and validates the file;
+.Cm job doctor
+reports the same.
+While a file is invalid,
+.Cm job policy
+fails and
+.Cm job hook
+refuses every command with the reason.
+.Pp
+A policy with two rules:
+.Bd -literal -offset indent
+{
+  "rules": {
+    "find-root": {
+      "forbids": "find starting at /",
+      "instead": "find in the one directory you mean"
+    },
+    "pipe-to-shell": {
+      "forbids": "a download piped into a shell",
+      "instead": "download to a file, read it, then run it"
+    }
+  }
+}
+.Ed
+.Sh VALIDATION AND RELOAD
+.Cm job config check Ar file
+validates a file without contacting the service.
+.Cm job config init Fl -profile Cm ordinary | legacy Ar file
+creates a file with owner-only permissions and refuses to overwrite one.
+.Cm job config show Fl -json
+shows the running configuration, its source and enabled compatibility rules.
+.Pp
+.Cm job config reload
+requires no active or queued Jobs and cannot change the profile,
+the socket group, the cgroup root or
+.Cm cgroup.required .
+To switch profile, finish or cancel existing Jobs, stop the service,
+change configuration, and restart.
+Recovery refuses active records from a different profile.
+.Pp
+Accepted preset revisions are immutable; changing a definition requires a new revision.
+Reload refuses removal of definitions still selected by a Queue or Group.
+The historical archive retains removed definitions for attempt validation.
+Active configuration permits 128 definitions; the archive permits 4096 definitions
+and 16 MiB of JSON. Composition permits 16 parents, 16 levels and 1024 visits.
+.Pp
+Network namespaces and routing profiles are not versioned. A Job resolves the
+name when it starts and records the digest of the profile it used. Reading a
+configuration fails, at start and at reload, when a Queue, a Group or an
+execution profile names a namespace or routing profile that it does not define.
+.Sh EXAMPLES
+.Bd -literal -offset indent
+schema_version = 1
+profile = "ordinary"
+
+[socket]
+group = "jobusers"
+
+[network.namespaces.lab]
+description = "the measurement bench"
+
+[network.profiles.updates]
+egress = "host"
+allow = ["192.0.2.10:443/tcp", "192.0.2.53:53"]
+dns = ["192.0.2.53"]
+bandwidth = "20Mbit"
+sharing = "shared"
+.Ed
+.Sh SEE ALSO
+.Xr job 1 ,
+.Xr job 7 ,
+.Xr jobd 8

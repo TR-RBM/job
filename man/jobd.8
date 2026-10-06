@@ -1,0 +1,397 @@
+.Dd October 5, 2026
+.Dt JOBD 8
+.Os
+.Sh NAME
+.Nm jobd
+.Nd job execution and scheduling service
+.Sh SYNOPSIS
+.Nm
+.Op Fl -system
+.Op Fl -foreground
+.Sh DESCRIPTION
+.Nm
+is the service behind
+.Xr job 1 .
+It accepts requests on a Unix socket, keeps the records of Jobs, Queues and
+Groups, decides which waiting Job starts, and starts one supervisor process
+for each running Job.
+It runs in the foreground, writes its log to standard error and never
+detaches; a service manager such as
+.Xr systemd 1
+or runit starts and restarts it.
+.Pp
+.Nm
+is the same program as
+.Xr job 1 ,
+installed under a second name.
+Every Job runs as the Unix user that runs
+.Nm .
+The service never changes to another user.
+.Bl -tag -width "--foreground"
+.It Fl -system
+Use the system locations in
+.Sx FILES
+instead of the per-user ones.
+Setting
+.Ev JOB_SYSTEM
+to 1 has the same effect and also selects the system service for a client.
+.It Fl -foreground
+Accepted for service scripts.
+The foreground is the only mode.
+.El
+.Sh USER AND SYSTEM SERVICE
+A user service belongs to one login account.
+It keeps its files below that account's home directory, and its socket is
+reachable by that account only.
+This is the default.
+.Pp
+A system service is started with
+.Fl -system
+by a service account created for it.
+It keeps its files in the conventional system directories.
+Other accounts reach it only when a socket group is configured, see
+.Sx ACCESS ,
+and when their environment sets
+.Ev JOB_SYSTEM
+to 1.
+.Sh FILES
+.Bl -column "Runtime socket" "$XDG_RUNTIME_DIR/job/job.sock" "/var/cache/job"
+.It Sy Purpose Ta Sy User service Ta Sy System service
+.It Configuration Ta Pa $XDG_CONFIG_HOME/job/config.toml Ta Pa /etc/job/config.toml
+.It State Ta Pa $XDG_STATE_HOME/job Ta Pa /var/lib/job
+.It Runtime socket Ta Pa $XDG_RUNTIME_DIR/job/job.sock Ta Pa /run/job/job.sock
+.It Cache Ta Pa $XDG_CACHE_HOME/job Ta Pa /var/cache/job
+.El
+.Pp
+An unset, empty or relative XDG variable is ignored and its fallback applies:
+.Pa ~/.config ,
+.Pa ~/.local/state
+and
+.Pa ~/.cache .
+When neither the variable nor
+.Ev HOME
+is usable, the command fails and names the variables to set; no file is ever
+placed in
+.Pa /tmp .
+.Pp
+The state directory holds records, retained output, the working directories of
+remote Jobs, the terminal sockets of running Jobs, the audit journal in
+.Pa audit/ ,
+the lifecycle event journal in
+.Pa events/
+and the lock
+.Pa daemon.lock .
+It is created with mode 0700.
+When a socket group is configured, terminal sockets are placed in
+.Pa terminals/
+below the runtime directory instead, with mode 0660 in a directory of mode
+0750, both owned by the group.
+Nothing is stored in the cache directory yet.
+.Pp
+The socket is placed by the first rule that applies:
+.Bl -enum
+.It
+.Ev JOB_RUNTIME_DIR
+is set: the socket is
+.Pa job.sock
+in that directory.
+.It
+.Ev JOB_STATE_DIR
+is set: the socket is
+.Pa daemon.sock
+inside that state directory.
+A state directory that was relocated on purpose never shares the socket of the
+account's ordinary service.
+.It
+System service:
+.Pa /run/job/job.sock .
+.It
+.Ev XDG_RUNTIME_DIR
+is set:
+.Pa $XDG_RUNTIME_DIR/job/job.sock .
+.It
+Otherwise, for example under runit without a login session:
+.Pa daemon.sock
+inside the state directory.
+.El
+.Pp
+A client applies the same rules, tries that socket first and then
+.Pa daemon.sock
+in its state directory.
+The service removes a socket left in the state directory by an earlier run
+when it binds elsewhere.
+A client of a user service that has neither
+.Ev XDG_RUNTIME_DIR
+nor one of the overrides, for example over
+.Xr ssh 1
+without a session manager, also tries
+.Pa /run/user/ Ns Ar uid Ns Pa /job/job.sock .
+In every other case the service and its clients must agree on these
+variables.
+A socket path longer than 107 bytes cannot be bound.
+.Sh ENVIRONMENT
+.Bl -tag -width JOB_RUNTIME_DIR
+.It Ev JOB_SYSTEM
+The value 1 selects the system locations.
+.It Ev JOB_CONFIG
+Configuration file.
+A missing file named this way is an error.
+.It Ev JOB_STATE_DIR
+State directory.
+.It Ev JOB_RUNTIME_DIR
+Directory of the service socket.
+.It Ev JOB_CACHE_DIR
+Cache directory.
+.It Ev JOB_CGROUP_ROOT
+The cgroup the service manages, see
+.Sx CGROUP DELEGATION .
+.It Ev HOME , XDG_CONFIG_HOME , XDG_STATE_HOME , XDG_RUNTIME_DIR , XDG_CACHE_HOME
+Defaults of a user service.
+.It Ev LC_ALL , LC_MESSAGES , LANG
+Language of messages; German is selected by a value beginning with de.
+.El
+.Sh CGROUP DELEGATION
+Limits are enforced through a cgroup v2 subtree that the service owns.
+The service chooses its root by the first rule that applies and names the rule
+in its startup line, in
+.Cm job doctor
+and in
+.Cm job host Fl -json :
+.Bl -enum
+.It
+.Ev JOB_CGROUP_ROOT ,
+or
+.Cm root
+in the
+.Cm [cgroup]
+table of
+.Xr job.conf 5 ,
+names it.
+.It
+The cgroup the service was started in, when the service may write its
+.Pa cgroup.procs
+and
+.Pa cgroup.subtree_control .
+If that cgroup is named
+.Pa daemon ,
+its parent is taken.
+This is what
+.Cm Delegate=yes
+of a systemd unit provides.
+.It
+.Pa /sys/fs/cgroup/exec ,
+the fixed path of earlier versions, when the service runs in it.
+.El
+.Pp
+A root must hold no process other than the service itself.
+A named root that holds other processes stops the start with an error.
+A discovered one is skipped, and the startup line says why.
+Without a root the service still runs: it watches processes and reports
+.Dq limits watched, not enforced .
+.Pp
+Inside its root the service moves itself to
+.Pa daemon ,
+keeps supervisors in
+.Pa shims
+and Jobs below
+.Pa jobs ,
+and enables the cpu, memory, pids and io controllers the parent offers.
+It changes nothing outside the root and sets no kernel parameter.
+Unprivileged user namespaces, needed for
+.Fl -net Cm none
+and for proxy and tunnel networks, depend on these kernel settings, where
+they exist; changing them is the administrator's decision:
+.Bd -literal -offset indent
+/proc/sys/user/max_user_namespaces
+/proc/sys/kernel/unprivileged_userns_clone
+/proc/sys/kernel/apparmor_restrict_unprivileged_userns
+.Ed
+.Sh ACCESS
+The socket is the access boundary.
+Every client the service admits has the same control over every Job, Queue,
+Group and terminal; labels such as the session name are descriptions, not
+permissions.
+.Pp
+By default the runtime directory has mode 0700 and the socket mode 0600, and
+the service also refuses any peer whose user differs from its own.
+.Pp
+With
+.Cm group
+set in the
+.Cm [socket]
+table of
+.Xr job.conf 5 ,
+the runtime directory gets mode 0750 and the socket mode 0660, both owned by
+that group, and a peer is admitted when it is the service user or when its
+primary or supplementary groups contain the group.
+The service user must be a member of the group.
+An unknown group stops the start.
+A shared socket needs a runtime directory apart from the state directory.
+Records that name an actor store the peer's user ID.
+.Pp
+The state directory stays private in every case.
+A client that cannot read it asks the service instead:
+.Cm job run ,
+.Cm job logs
+and
+.Cm job log
+receive the retained output of one pinned attempt over the control socket,
+read-only and with follow, and
+.Cm job attach
+connects to the terminal socket in the runtime directory.
+.Cm job audit
+and
+.Cm job events
+read the state directory directly and stay with the service user.
+.Sh OPERATING MODE
+With a delegated cgroup the service enforces limits through it.
+Without one it runs in monitoring mode: processes are watched, limits are not
+enforced, and the start line says
+.Dq monitoring mode .
+.Cm required
+in the
+.Cm [cgroup]
+table of
+.Xr job.conf 5
+decides whether that is allowed.
+With
+.Cm required = true
+the service refuses to start without a usable delegated cgroup and names what
+is missing; with false, the default, it starts in monitoring mode.
+In monitoring mode with the ordinary profile a Job that asks for
+.Fl -mem ,
+.Fl -pids
+or a cgroup control such as
+.Fl -memory-max
+or
+.Fl -cpu-limit
+is refused with a capability error before it is recorded as runnable; the
+legacy profile keeps watching
+.Fl -mem
+and
+.Fl -pids .
+.Pp
+Limits set around the service still apply to it and to every Job.
+.Cm job doctor
+and
+.Cm job host
+report, as
+.Li surrounding_limits ,
+the tightest
+.Pa memory.max ,
+.Pa memory.high ,
+.Pa cpu.max
+and
+.Pa pids.max
+among the service's own cgroup and its ancestors with the cgroup that sets
+each, the effective
+.Pa cpuset.cpus ,
+and the service's own resource limits.
+Limits that cannot be read are reported as not discoverable.
+.Sh SIGNALS AND RESTART
+.Dv SIGTERM ,
+.Dv SIGINT
+and
+.Dv SIGKILL
+end the service at once.
+It holds no state that is not already on disk.
+Supervisors are separate processes in their own sessions and keep running.
+A service that starts again takes the lock, reads the records, finds the
+supervisors that still run by their process handles and boot identity, and
+collects the results of those that ended meanwhile.
+A reboot ends every supervisor; such attempts are recorded as lost.
+.Pp
+A service manager decides what a stop does to the other processes.
+The supplied systemd units set
+.Cm KillMode=process ,
+so a stop or restart ends the service only, and
+.Cm DelegateSubgroup=daemon ,
+so the restarted service is placed beside the surviving Jobs.
+Stopping the unit therefore does not stop Jobs; cancel them first with
+.Xr job 1 .
+The runit example behaves the same way.
+.Pp
+There is no reload signal.
+.Cm job config reload
+rereads the configuration while no Job is active or waiting.
+The service profile, the socket group and the cgroup root change only by a
+restart.
+.Sh LOGGING
+The service writes one line per event to standard error.
+Under systemd this goes to the journal; under runit to the service's log
+script.
+The output of Jobs is not part of this log: it is kept in the state
+directory and read with
+.Cm job logs .
+How much of each Job's output is kept is set by its output quota, and how
+much the service keeps in total by its output budget; both are described
+under
+.Cm output
+in
+.Xr job.conf 5 .
+.Sh LINGERING
+A systemd user service ends when its account's last session ends, and
+.Pa $XDG_RUNTIME_DIR
+is removed with it.
+To keep a user service and its Jobs across logouts an administrator runs
+.Cm loginctl enable-linger Ar user
+once.
+.Cm job doctor
+reports whether lingering is enabled.
+.Sh UPGRADE AND MIGRATION
+Install the new program, then restart the service.
+A running service keeps starting supervisors from the image it was started
+from until then.
+.Cm job doctor
+compares the version and protocol of the service with those of the command.
+.Pp
+The state directory carries a schema version.
+A service refuses state of another version; convert it offline with
+.Cm job state validate ,
+.Cm backup
+and
+.Cm migrate ,
+described in the migration guide installed in
+.Pa share/doc/job .
+A state directory of the earlier name
+.Pa exec
+beside the default one stops the service and its clients until one is chosen
+with
+.Ev JOB_STATE_DIR .
+.Pp
+Earlier versions always kept the socket as
+.Pa daemon.sock
+in the state directory.
+Clients of this version still find it there.
+Clients of an earlier version do not find a socket bound in a runtime
+directory; replace them together with the service.
+.Sh EXIT STATUS
+.Nm
+runs until it is ended.
+It exits with 125 when it cannot start, after naming the reason on standard
+error.
+.Sh EXAMPLES
+Run a user service in a terminal:
+.Bd -literal -offset indent
+jobd
+.Ed
+.Pp
+Enable the supplied units:
+.Bd -literal -offset indent
+systemctl --user enable --now jobd
+systemctl enable --now jobd
+.Ed
+.Pp
+Check a host before or after starting the service:
+.Bd -literal -offset indent
+job doctor
+job doctor --system --json
+job --system queue
+.Ed
+.Sh SEE ALSO
+.Xr job 1 ,
+.Xr job.conf 5 ,
+.Xr job 7 ,
+.Xr cgroups 7 ,
+.Xr systemd.resource-control 5 ,
+.Xr loginctl 1

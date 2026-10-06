@@ -1,0 +1,16 @@
+[Unit]
+Description=Job execution and scheduling service for this user
+Documentation=man:jobd(8) man:job.conf(5)
+
+[Service]
+Type=exec
+ExecStart=@bindir@/jobd
+Environment=JOB_RUNTIME_DIR=%t/job
+Delegate=yes
+DelegateSubgroup=daemon
+KillMode=process
+TasksMax=infinity
+Restart=always
+
+[Install]
+WantedBy=default.target

@@ -1,0 +1,363 @@
+{
+  "schema_version": 1,
+  "host": false,
+  "rule": {
+    "id": "memory",
+    "resource": "memory",
+    "metric": "full",
+    "window": "avg10",
+    "high_bp": 100,
+    "low_bp": 10,
+    "sustain_ms": 1000,
+    "minimum_hold_ms": 2000,
+    "recovery_ms": 1000,
+    "step_ms": 1000,
+    "required": true
+  },
+  "frames": [
+    {
+      "boot_id": "a",
+      "at_ms": 0,
+      "signal": {
+        "availability": "available",
+        "value_bp": 0,
+        "missing": 0
+      },
+      "active": 2,
+      "demand": 5
+    },
+    {
+      "boot_id": "a",
+      "at_ms": 500,
+      "signal": {
+        "availability": "available",
+        "value_bp": 200,
+        "missing": 0
+      },
+      "active": 2,
+      "demand": 5
+    },
+    {
+      "boot_id": "a",
+      "at_ms": 1000,
+      "signal": {
+        "availability": "available",
+        "value_bp": 0,
+        "missing": 0
+      },
+      "active": 2,
+      "demand": 5
+    },
+    {
+      "boot_id": "a",
+      "at_ms": 1500,
+      "signal": {
+        "availability": "available",
+        "value_bp": 200,
+        "missing": 0
+      },
+      "active": 2,
+      "demand": 5
+    },
+    {
+      "boot_id": "a",
+      "at_ms": 2000,
+      "signal": {
+        "availability": "available",
+        "value_bp": 200,
+        "missing": 0
+      },
+      "active": 2,
+      "demand": 5
+    },
+    {
+      "boot_id": "a",
+      "at_ms": 2500,
+      "signal": {
+        "availability": "available",
+        "value_bp": 200,
+        "missing": 0
+      },
+      "active": 2,
+      "demand": 5
+    },
+    {
+      "boot_id": "a",
+      "at_ms": 3000,
+      "signal": {
+        "availability": "available",
+        "value_bp": 0,
+        "missing": 0
+      },
+      "active": 2,
+      "demand": 5
+    },
+    {
+      "boot_id": "a",
+      "at_ms": 3500,
+      "signal": {
+        "availability": "available",
+        "value_bp": 0,
+        "missing": 0
+      },
+      "active": 2,
+      "demand": 5
+    },
+    {
+      "boot_id": "a",
+      "at_ms": 4000,
+      "signal": {
+        "availability": "available",
+        "value_bp": 0,
+        "missing": 0
+      },
+      "active": 2,
+      "demand": 5
+    },
+    {
+      "boot_id": "a",
+      "at_ms": 4500,
+      "signal": {
+        "availability": "available",
+        "value_bp": 0,
+        "missing": 0
+      },
+      "active": 2,
+      "demand": 5
+    },
+    {
+      "boot_id": "a",
+      "at_ms": 5000,
+      "signal": {
+        "availability": "available",
+        "value_bp": 50,
+        "missing": 0
+      },
+      "active": 3,
+      "demand": 5
+    },
+    {
+      "boot_id": "a",
+      "at_ms": 5500,
+      "signal": {
+        "availability": "available",
+        "value_bp": 0,
+        "missing": 0
+      },
+      "active": 3,
+      "demand": 5
+    },
+    {
+      "boot_id": "a",
+      "at_ms": 6500,
+      "signal": {
+        "availability": "available",
+        "value_bp": 0,
+        "missing": 0
+      },
+      "active": 3,
+      "demand": 5
+    },
+    {
+      "boot_id": "a",
+      "at_ms": 7500,
+      "signal": {
+        "availability": "available",
+        "value_bp": 0,
+        "missing": 0
+      },
+      "active": 4,
+      "demand": 4
+    },
+    {
+      "boot_id": "a",
+      "at_ms": 8500,
+      "signal": {
+        "availability": "unavailable",
+        "reason": "trace source unavailable"
+      },
+      "active": 4,
+      "demand": 5
+    },
+    {
+      "boot_id": "a",
+      "at_ms": 9500,
+      "signal": {
+        "availability": "available",
+        "value_bp": 0,
+        "missing": 1
+      },
+      "active": 4,
+      "demand": 5
+    },
+    {
+      "boot_id": "a",
+      "at_ms": 10500,
+      "signal": {
+        "availability": "available",
+        "value_bp": 0,
+        "missing": 0
+      },
+      "active": 2,
+      "demand": 5
+    },
+    {
+      "boot_id": "a",
+      "at_ms": 11500,
+      "signal": {
+        "availability": "available",
+        "value_bp": 0,
+        "missing": 0
+      },
+      "active": 2,
+      "demand": 5
+    },
+    {
+      "boot_id": "a",
+      "at_ms": 12500,
+      "signal": {
+        "availability": "available",
+        "value_bp": 200,
+        "missing": 0
+      },
+      "active": 2,
+      "demand": 5,
+      "restart": true
+    },
+    {
+      "boot_id": "a",
+      "at_ms": 13000,
+      "signal": {
+        "availability": "available",
+        "value_bp": 200,
+        "missing": 0
+      },
+      "active": 2,
+      "demand": 5
+    },
+    {
+      "boot_id": "b",
+      "at_ms": 0,
+      "signal": {
+        "availability": "available",
+        "value_bp": 200,
+        "missing": 0
+      },
+      "active": 2,
+      "demand": 5
+    },
+    {
+      "boot_id": "b",
+      "at_ms": 500,
+      "signal": {
+        "availability": "available",
+        "value_bp": 0,
+        "missing": 0
+      },
+      "active": 2,
+      "demand": 5
+    },
+    {
+      "boot_id": "b",
+      "at_ms": 1500,
+      "signal": {
+        "availability": "available",
+        "value_bp": 0,
+        "missing": 0
+      },
+      "active": 2,
+      "demand": 5
+    },
+    {
+      "boot_id": "b",
+      "at_ms": 2500,
+      "signal": {
+        "availability": "available",
+        "value_bp": 0,
+        "missing": 0
+      },
+      "active": 2,
+      "demand": 5
+    },
+    {
+      "boot_id": "b",
+      "at_ms": 7000,
+      "signal": {
+        "availability": "available",
+        "value_bp": 200,
+        "missing": 0
+      },
+      "active": 2,
+      "demand": 5
+    },
+    {
+      "boot_id": "b",
+      "at_ms": 8000,
+      "signal": {
+        "availability": "available",
+        "value_bp": 200,
+        "missing": 0
+      },
+      "active": 2,
+      "demand": 5
+    },
+    {
+      "boot_id": "b",
+      "at_ms": 9000,
+      "signal": {
+        "availability": "available",
+        "value_bp": 200,
+        "missing": 0
+      },
+      "active": 2,
+      "demand": 5
+    },
+    {
+      "boot_id": "b",
+      "at_ms": 10000,
+      "signal": {
+        "availability": "available",
+        "value_bp": 200,
+        "missing": 0
+      },
+      "active": 2,
+      "demand": 5
+    },
+    {
+      "boot_id": "b",
+      "at_ms": 13000,
+      "signal": {
+        "availability": "empty"
+      },
+      "active": 0,
+      "demand": 3
+    },
+    {
+      "boot_id": "b",
+      "at_ms": 14000,
+      "signal": {
+        "availability": "empty"
+      },
+      "active": 0,
+      "demand": 3
+    },
+    {
+      "boot_id": "b",
+      "at_ms": 15000,
+      "signal": {
+        "availability": "empty"
+      },
+      "active": 0,
+      "demand": 3
+    },
+    {
+      "boot_id": "b",
+      "at_ms": 16000,
+      "signal": {
+        "availability": "empty"
+      },
+      "active": 0,
+      "demand": 2
+    }
+  ]
+}

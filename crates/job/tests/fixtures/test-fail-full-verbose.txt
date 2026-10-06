@@ -1,0 +1,32 @@
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.00s
+     Running unittests src/lib.rs (target/debug/deps/demo-c45ca88aadec573c)
+
+running 3 tests
+test tests::fails_eq ... FAILED
+test tests::fails_panic ... FAILED
+test tests::passes ... ok
+
+failures:
+
+---- tests::fails_eq stdout ----
+some noise
+
+thread 'tests::fails_eq' (14881) panicked at src/lib.rs:6:53:
+assertion `left == right` failed
+  left: 4
+ right: 5
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+---- tests::fails_panic stdout ----
+
+thread 'tests::fails_panic' (14882) panicked at src/lib.rs:7:67:
+index out of bounds: the len is 0 but the index is 3
+
+
+failures:
+    tests::fails_eq
+    tests::fails_panic
+
+test result: FAILED. 1 passed; 2 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+error: test failed, to rerun pass `--lib`

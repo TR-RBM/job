@@ -1,0 +1,14 @@
+755 ./usr/bin/job
+777 ./usr/bin/jobd
+644 ./usr/lib/systemd/system/jobd.service
+644 ./usr/lib/systemd/user/jobd.service
+644 ./usr/share/bash-completion/completions/job
+644 ./usr/share/doc/job/LICENSE
+644 ./usr/share/doc/job/administration.md
+644 ./usr/share/doc/job/migration.md
+755 ./usr/share/doc/job/runit/run
+644 ./usr/share/fish/vendor_completions.d/job.fish
+644 ./usr/share/man/man1/job.1
+644 ./usr/share/man/man5/job.conf.5
+644 ./usr/share/man/man7/job.7
+644 ./usr/share/man/man8/jobd.8

@@ -1,0 +1,12 @@
+#!/bin/sh
+set -eu
+ROOT=$(cd "$(dirname "$0")/.." && pwd)
+cd "$ROOT"
+tools/install-check
+cargo fmt --all --check
+cargo clippy --quiet --all-targets -- -D warnings
+cargo test --quiet
+tools/check-delegated
+if [ -x tools/export ]; then
+    tools/export --check --quick
+fi
