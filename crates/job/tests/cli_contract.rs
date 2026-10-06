@@ -2227,3 +2227,17 @@ fn pidns_run_passes_stdin_and_keeps_the_streams_apart() {
     let stderr = daemon.job(&["logs", &id, "--stream", "stderr", "--raw"]);
     assert_eq!(out(&stderr), "problem\n");
 }
+
+#[test]
+fn run_of_a_program_that_cannot_be_started_names_the_reason() {
+    let daemon = Daemon::start("unstartable");
+    let missing = daemon.job(&["run", "--", "/no-such-program-here"]);
+    assert_eq!(missing.status.code(), Some(125), "{}", err(&missing));
+    assert!(
+        err(&missing).contains("/no-such-program-here"),
+        "{}",
+        err(&missing)
+    );
+    assert!(!err(&missing).contains("recording"), "{}", err(&missing));
+    assert_eq!(out(&missing), "");
+}

@@ -64,17 +64,30 @@ fn reap_children(kept: &[i32]) {
 pub const HELPERS: [&str; 5] = ["sccache", "gpg-agent", "keyboxd", "ssh-agent", "dirmngr"];
 const EMPTY_WAIT: Duration = Duration::from_secs(5);
 
+const ARGUMENTS_TRIES: u32 = 10;
+const ARGUMENTS_PAUSE: Duration = Duration::from_millis(2);
+
+fn arguments(pid: i32) -> String {
+    for attempt in 0..ARGUMENTS_TRIES {
+        let Ok(bytes) = std::fs::read(format!("/proc/{pid}/cmdline")) else {
+            return String::new();
+        };
+        let command = bytes
+            .split(|b| *b == 0)
+            .filter(|part| !part.is_empty())
+            .map(|part| String::from_utf8_lossy(part).into_owned())
+            .collect::<Vec<_>>()
+            .join(" ");
+        if !command.is_empty() || attempt + 1 == ARGUMENTS_TRIES {
+            return command;
+        }
+        std::thread::sleep(ARGUMENTS_PAUSE);
+    }
+    String::new()
+}
+
 fn describe(pid: i32) -> String {
-    let command = std::fs::read(format!("/proc/{pid}/cmdline"))
-        .map(|bytes| {
-            bytes
-                .split(|b| *b == 0)
-                .filter(|part| !part.is_empty())
-                .map(|part| String::from_utf8_lossy(part).into_owned())
-                .collect::<Vec<_>>()
-                .join(" ")
-        })
-        .unwrap_or_default();
+    let command = arguments(pid);
     let command = if command.is_empty() {
         name_of(pid)
     } else {
@@ -393,7 +406,11 @@ pub fn run(store: &Store, id: u64, cgroup: Option<PathBuf>) -> i32 {
         return 2;
     };
     let env = store.load_env(id);
+    let recording = std::cell::RefCell::new(None::<Recorder>);
     let finish = |mut result: ShimResult| {
+        if let Some(log) = recording.take() {
+            let _ = log.finish();
+        }
         result.attempt = Some(job.attempt);
         crate::durability::exit::save_result(store, id, &result);
         let _ = crate::client::call(&store.socket(), &crate::model::Request::Done { id });
@@ -407,8 +424,10 @@ pub fn run(store: &Store, id: u64, cgroup: Option<PathBuf>) -> i32 {
         ..ShimResult::default()
     };
 
-    let log = match Recorder::create(&job, &store.log_file(id)) {
-        Ok(log) => log,
+    match Recorder::create(&job, &store.log_file(id)) {
+        Ok(log) => {
+            recording.replace(Some(log));
+        }
         Err(e) => {
             finish(start_error(format!("cannot create the log: {e}")));
             return 1;
@@ -730,6 +749,9 @@ pub fn run(store: &Store, id: u64, cgroup: Option<PathBuf>) -> i32 {
     });
     let (terminal_exit, terminal_ended) = std::sync::mpsc::channel();
     let framed_remote = submitted.is_some();
+    let Some(log) = recording.take() else {
+        return 1;
+    };
     let copier = std::thread::spawn(move || {
         if let Some(terminal) = terminal {
             return terminal.serve(log, terminal_ended);

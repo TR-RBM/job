@@ -19,7 +19,7 @@ If you are unsure, report it.
 
 Report privately. Do not open a public issue, and do not publish details, before a fix is available.
 
-Send the report to the maintainer contact: the address published with the release you received. Include:
+Send the report by e-mail to the maintainer, Tim Richter, at `info@richter-it-service.eu`. Include:
 
 - the version (`job host --json` has it under `version`) and how job was installed;
 - the distribution, kernel version, service manager, and whether the service runs for one user or system-wide with a socket group;
@@ -33,7 +33,7 @@ Do not include real credentials or private data.
 
 The maintainers confirm that the report arrived, examine it, and tell you whether they regard it as a vulnerability and why. A confirmed vulnerability is fixed in a new release, and the [release notes](docs/release-notes.md) of that release describe it and, if you wish, name you. Please allow time for a fix before you publish.
 
-No response times are promised: the project has not measured what it can keep, and does not state a figure it cannot stand behind.
+You get an answer within 72 hours of your report. That answer confirms that the report arrived and says what happens next; it is not a promise that a fix exists by then.
 
 ## Supported versions
 

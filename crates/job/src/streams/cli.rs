@@ -3,7 +3,7 @@ use std::process::ExitCode;
 use std::time::{Duration, Instant};
 
 use super::{CHUNK, Mode, Record, Source, message, quota::Quota};
-use crate::model::{Job, Request};
+use crate::model::{Job, Request, Response};
 use crate::operations::output::Feed;
 
 pub fn help() -> String {
@@ -43,6 +43,14 @@ fn trimmed(bytes: u64) -> String {
             "the output of this attempt was removed to keep the service within its output budget"
         )
     )
+}
+
+fn unstarted(id: u64) {
+    if let Ok(Response::Finished { job }) = crate::call(Request::Wait { id, timeout_ms: 0 })
+        && job.result.as_ref().is_some_and(|r| r.start_error.is_some())
+    {
+        eprintln!("job {id}: {}", job.exit_description());
+    }
 }
 
 pub fn live(job: &Job, timeout_ms: u64) -> Result<ExitCode, String> {
@@ -85,6 +93,7 @@ pub fn live(job: &Job, timeout_ms: u64) -> Result<ExitCode, String> {
             return Err(error);
         }
         if batch.complete && batch.terminal {
+            unstarted(job.id);
             return Ok(ExitCode::from(batch.exit_status));
         }
         if started.elapsed() >= Duration::from_millis(timeout_ms) {

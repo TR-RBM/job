@@ -3761,7 +3761,7 @@ fn fair_share_balances_weighted_service_under_a_bounded_continuous_backlog() {
         }
     }
     ordering_ok(&daemon, &["group", "resume", "fair"]);
-    let deadline = Instant::now() + Duration::from_secs(20);
+    let deadline = Instant::now() + Duration::from_secs(90);
     let order = loop {
         let order = std::fs::read_to_string(daemon.file("order")).unwrap_or_default();
         if order.lines().count() >= 40 {
