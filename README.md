@@ -2,13 +2,24 @@
 
 **job is an open source execution and scheduling application for Linux.** Run commands, organize work into queues and groups, and control when and how processes execute. Use job from a terminal, a script, or an automated system.
 
+A command given to job becomes a Job: a service starts it, keeps it running independently of the terminal it came from, and records what it printed and how it ended. You can leave and come back, wait for it from a script, read its output while it is written, and hold, change, retry or cancel it.
+
+Beyond running it, you decide for one Job, or for a whole Queue or Group of them:
+
+- **When it runs.** At once, held until you release it, after the work ahead of it, by priority, or as a fair share between teams, with a ceiling on how many run together.
+- **With how much.** Reserved and limited CPU, memory and device I/O, the CPUs and the NUMA policy it uses, and its process limits, changeable while it runs.
+- **In what surroundings.** Namespaces of its own in which it sees only its own processes, a read-only file system, a private temporary directory, no new privileges, fewer capabilities, and system calls it may not make.
+- **On which network.** The host's, none at all, only through a proxy or a WireGuard tunnel, or a network the administrator prepared and named, each with an optional bandwidth ceiling.
+- **On which machine.** This one, or another host reached over SSH.
+- **What is kept.** Standard output and standard error apart with a size you choose, every attempt with its outcome, a terminal you can detach from and return to, the events of every Job, and a journal of who changed what.
+
+Each of these is asked for, by an option on the Job or a setting on its Queue or Group. A plain `job run -- command` adds none of them: no reservation, no limit, no sandbox.
+
 This release runs work on one host and on explicitly named hosts over SSH. It does not place work across a cluster and has no calendar scheduling.
 
-## Purpose
+## How it is built
 
-A service, `jobd`, starts each command under its own supervisor, records its output and outcome, and keeps it running independently of the terminal that submitted it. The `job` command talks to that service. You can submit work and leave, wait for it later, read its output, hold it, change it, retry it, and decide in which order and under which limits waiting work starts.
-
-Nothing beyond that is switched on by itself. A Job without options gets no resource reservation, no limit and no sandbox. Priorities, fair share, resource limits, pressure rules, security controls, namespaces and network boundaries are each requested explicitly.
+A service, `jobd`, starts each command under its own supervisor process and keeps its records on disk; a Job that is running goes on when the service is restarted, and is picked up again. The `job` command talks to that service over a Unix socket and answers as text, as JSON or as tab-separated lines, so a script or another program uses the same command a person does. One user can run a service for themselves, or one service can be shared by a Unix group whose members trust each other.
 
 ## A short example
 
