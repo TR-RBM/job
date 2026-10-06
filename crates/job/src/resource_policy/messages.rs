@@ -82,6 +82,10 @@ const CATALOGUE: &[(&str, &str)] = &[
         "I/O-Raten verwenden Bytes/s und Operationen/s auf vollständigen Blockgeräten. io-weight braucht aktiviertes IOCost; io-bfq-weight braucht aktives BFQ mit low_latency=0. Prüfe io_devices mit host --json. Geräteweite Regeln werden nie automatisch geändert.",
     ),
     (
+        "{count} processes in cgroups that this Job made below its own were killed for memory; the command itself exited 0",
+        "{count} Prozesse in cgroups, die dieser Job unterhalb seiner eigenen angelegt hat, wurden wegen Speichermangel beendet; der Befehl selbst endete mit 0",
+    ),
+    (
         "stopped: kernel OOM kill; inspect Job, aggregate and enclosing memory controls",
         "beendet: Kernel-OOM-Kill; prüfe die Speicherregeln des Jobs, der gemeinsamen Bereiche und der übergeordneten cgroups",
     ),

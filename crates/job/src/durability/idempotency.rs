@@ -247,6 +247,7 @@ pub fn record(key: Option<&Key>, previous: Option<&Job>) -> super::Record {
         },
         actor_uid: peer.map(|peer| peer.uid),
         actor_pid: peer.map(|peer| peer.pid),
+        revision: previous.and_then(|job| job.durability.revision),
         ..Default::default()
     }
 }

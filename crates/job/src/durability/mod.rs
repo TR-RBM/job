@@ -123,6 +123,8 @@ pub struct Record {
     pub launch_gated: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub admitted_ms: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub revision: Option<u64>,
 }
 
 pub fn write_in_boot<T: Serialize>(path: &Path, value: &T) -> io::Result<()> {

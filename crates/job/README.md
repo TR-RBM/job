@@ -63,6 +63,7 @@ Each has its own `README.md`.
 | `cancellation/` | durable cancellation of one Job or a captured subtree |
 | `cli2/` | labels, moving a waiting Job, complete listings, explanation of settings, interrupts and standard input of `job run` |
 | `cli_contract/` | the compatibility switch, literal arguments, shell selection and quiet wait |
+| `clientif/` | the client interface of `docs/client-interface.md` on the service's socket: the greeting, and the requests `totals`, `commands`, `command` and `native` |
 | `commands/` | the one command table and what is generated from it: help, completion, option checking, the JSON envelope and the syntax reference |
 | `config/` | the versioned TOML service configuration and the service profiles |
 | `doctor/` | `job doctor`, the check of the host and the service setup |

@@ -158,6 +158,7 @@ impl Graph {
         self.validate().map_err(io::Error::other)?;
         crate::store::write_json(&store.root.join("objects.json"), self)?;
         crate::operations::journal::observe_objects(self);
+        crate::clientif::changes::objects(self);
         Ok(())
     }
 

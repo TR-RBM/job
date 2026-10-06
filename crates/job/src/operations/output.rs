@@ -383,15 +383,16 @@ pub fn serve(store: &Store, request: Request, mut out: UnixStream) -> io::Result
             follow,
         } => stream(store, id, attempt, follow, &mut out),
         Request::LogQuery { id, attempt, query } => {
-            let response = match selected(store, id, attempt)
-                .and_then(|job| crate::query::run(&job, &query))
-            {
-                Ok(text) => Response::Done { line: text },
-                Err(message) => Response::Error { message },
-            };
-            line(&mut out, &response)
+            line(&mut out, &queried(store, id, attempt, &query))
         }
         _ => Ok(()),
+    }
+}
+
+pub fn queried(store: &Store, id: u64, attempt: Option<u64>, query: &[String]) -> Response {
+    match selected(store, id, attempt).and_then(|job| crate::query::run(&job, query)) {
+        Ok(text) => Response::Done { line: text },
+        Err(message) => Response::Error { message },
     }
 }
 

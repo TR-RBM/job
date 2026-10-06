@@ -28,10 +28,16 @@ static USAGE: AtomicBool = AtomicBool::new(false);
 static CONTACTED: AtomicBool = AtomicBool::new(false);
 
 pub fn contacted() {
+    if crate::clientif::invocation::contacted() {
+        return;
+    }
     CONTACTED.store(true, Ordering::Relaxed);
 }
 
 pub fn enveloped() -> bool {
+    if let Some(enveloped) = crate::clientif::invocation::enveloped() {
+        return enveloped;
+    }
     prepared().1.is_some()
 }
 
@@ -44,6 +50,9 @@ pub fn arguments() -> &'static [String] {
 }
 
 pub fn usage() {
+    if crate::clientif::invocation::usage() {
+        return;
+    }
     USAGE.store(true, Ordering::Relaxed);
 }
 
@@ -72,6 +81,9 @@ fn deliver(error: bool, line: bool, arguments: std::fmt::Arguments<'_>) -> io::R
 }
 
 pub fn write(error: bool, line: bool, arguments: std::fmt::Arguments<'_>) {
+    if crate::clientif::invocation::write(error, line, arguments) {
+        return;
+    }
     let Err(failure) = deliver(error, line, arguments) else {
         return;
     };
@@ -99,7 +111,7 @@ pub fn emit(kind: &str, value: &serde_json::Value) {
     raw(kind, &value.to_string());
 }
 
-fn compact(text: &str) -> Option<String> {
+pub fn compact(text: &str) -> Option<String> {
     serde_json::from_str::<serde::de::IgnoredAny>(text).ok()?;
     let mut out = String::with_capacity(text.len());
     let mut quoted = false;
@@ -163,14 +175,14 @@ impl Capture {
     }
 }
 
-fn number(code: ExitCode) -> u8 {
+pub fn number(code: ExitCode) -> u8 {
     (0..=u8::MAX)
         .find(|status| ExitCode::from(*status) == code)
         .unwrap_or(crate::EXIT_SERVICE_ERROR)
 }
 
-fn misparsed(kind: &str) -> bool {
-    let rest = arguments().get(1..).unwrap_or_default();
+fn misparsed(kind: &str, arguments: &[String]) -> bool {
+    let rest = arguments.get(1..).unwrap_or_default();
     match kind {
         "run" | "create" | "submit" => {
             crate::parse_options(rest).map_or(true, |o| o.command.is_empty())
@@ -181,18 +193,43 @@ fn misparsed(kind: &str) -> bool {
                     .map_or(true, |o| o.command.is_empty())
         }
         "wait" => {
-            !super::takes_set(arguments()) && crate::cli_contract::WaitOptions::parse(rest).is_err()
+            !super::takes_set(arguments) && crate::cli_contract::WaitOptions::parse(rest).is_err()
         }
         _ => false,
     }
 }
 
-fn failure(kind: &str, status: u8, error: Option<&str>, refused: bool) {
-    let local = refused
-        && (!CONTACTED.load(Ordering::Relaxed)
-            || error
+pub struct Attempt<'a> {
+    pub kind: Option<&'a str>,
+    pub arguments: &'a [String],
+    pub flagged: bool,
+    pub contacted: bool,
+    pub error: Option<&'a str>,
+    pub refused: bool,
+}
+
+pub fn misused(attempt: &Attempt<'_>) -> bool {
+    let local = attempt.refused
+        && (!attempt.contacted
+            || attempt
+                .error
                 .is_some_and(|text| text.starts_with("usage: ") || text.starts_with("Aufruf: ")));
-    let outcome = if USAGE.load(Ordering::Relaxed) || local || misparsed(kind) {
+    attempt.flagged
+        || local
+        || attempt
+            .kind
+            .is_some_and(|kind| misparsed(kind, attempt.arguments))
+}
+
+fn failure(kind: &str, status: u8, error: Option<&str>, refused: bool) {
+    let outcome = if misused(&Attempt {
+        kind: Some(kind),
+        arguments: arguments(),
+        flagged: USAGE.load(Ordering::Relaxed),
+        contacted: CONTACTED.load(Ordering::Relaxed),
+        error,
+        refused,
+    }) {
         "usage_error"
     } else {
         "service_error"

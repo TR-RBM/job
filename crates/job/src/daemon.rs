@@ -78,6 +78,8 @@ pub struct Daemon {
 
 #[path = "cli2/service.rs"]
 mod cli2_service;
+#[path = "clientif/service.rs"]
+pub mod client_service;
 #[path = "idset/service.rs"]
 mod idset_service;
 
@@ -502,6 +504,7 @@ impl Daemon {
                 job.queue_id = Some(queue_id);
                 job.spec.queue = Some(self.objects.path(queue_id));
             }
+            crate::clientif::index::observe(&self.store, &job);
             if !job.state.terminal()
                 && crate::netsecret::settle_record(&mut job, &self.store.job_dir(id))
                     .map_err(io::Error::other)?
@@ -2172,7 +2175,7 @@ impl Daemon {
         self.jobs.insert(id, job);
     }
 
-    fn finalize(&mut self, id: u64, result: ShimResult, now: u64) {
+    fn finalize(&mut self, id: u64, mut result: ShimResult, now: u64) {
         let _ = self.checkpoint_ordering();
         let Some(mut job) = self.jobs.remove(&id) else {
             return;
@@ -2190,7 +2193,18 @@ impl Daemon {
         usage.peak_pids = usage.peak_pids.max(watched.peak_pids);
         usage.written = usage.written.max(watched.written);
         let reservation = &job.reservation;
-        if job.stop.is_none() && (result.oom_group_kill > 0 || result.oom_kill > 0) {
+        let below_only = result.exit_code == Some(0)
+            && result.own_oom == Some(0)
+            && result.own_oom_kill == Some(0);
+        if job.stop.is_none() && result.oom_kill > 0 && below_only {
+            result.notes.push(
+                crate::resource_policy::message(
+                    "{count} processes in cgroups that this Job made below its own were killed for memory; the command itself exited 0",
+                )
+                .replace("{count}", &result.oom_kill.to_string()),
+            );
+        }
+        if job.stop.is_none() && (result.oom_group_kill > 0 || result.oom_kill > 0) && !below_only {
             job.stop = Some(Stop {
                 kind: StopKind::Memory,
                 line: crate::resource_policy::message(
@@ -2346,6 +2360,7 @@ impl Daemon {
             if current.started_ms.is_none() {
                 self.learn_start(&mut current);
                 if current.started_ms.is_some() {
+                    crate::clientif::index::learned(&self.store, &current);
                     self.jobs.insert(id, current.clone());
                 }
             }
@@ -3816,7 +3831,7 @@ fn spawn_shim(
     Ok((handle, gate))
 }
 
-fn handle(shared: &Shared, stream: UnixStream) -> io::Result<()> {
+fn handle(shared: &Arc<Shared>, stream: UnixStream) -> io::Result<()> {
     let admitted = crate::service::access::shared().admits(&stream);
     let peer_ok = admitted.is_some();
     if let Some(uid) = admitted {
@@ -3825,7 +3840,11 @@ fn handle(shared: &Shared, stream: UnixStream) -> io::Result<()> {
     crate::durability::peer::enter(crate::durability::peer::of(&stream).filter(|_| peer_ok));
     let mut writer = stream.try_clone()?;
     let mut line = Vec::new();
-    BufReader::new(stream).read_until(b'\n', &mut line)?;
+    let mut reader = BufReader::new(stream);
+    reader.read_until(b'\n', &mut line)?;
+    if crate::clientif::greeted(&line) {
+        return crate::clientif::serve(shared, &line, reader, writer, peer_ok);
+    }
     let response = if !peer_ok {
         let message = crate::service::access::shared().refusal();
         crate::durability::audit::refused(crate::durability::peer::of(&writer), &message);

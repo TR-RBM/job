@@ -6,6 +6,9 @@ mod messages;
 pub use messages::{help, message};
 
 pub fn legacy() -> Result<bool, String> {
+    if crate::clientif::invocation::active() {
+        return Ok(false);
+    }
     match std::env::var("JOB_CLI_COMPAT") {
         Err(std::env::VarError::NotPresent) => Ok(false),
         Ok(value) if value == "unix" => Ok(false),

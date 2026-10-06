@@ -50,6 +50,9 @@ pub fn spec(
 }
 
 pub fn env() -> Env {
+    if let Some(env) = crate::clientif::invocation::env() {
+        return env;
+    }
     Env {
         vars: std::env::vars().collect(),
     }

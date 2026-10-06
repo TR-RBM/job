@@ -8,7 +8,8 @@ pub mod output;
 mod sets;
 mod table;
 
-pub use messages::message;
+pub use help::synopsis;
+pub use messages::{german, message, message_in};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Value {
@@ -252,6 +253,37 @@ pub fn check_object(kind: crate::objects::Kind, args: &[String]) -> Result<(), S
     )
 }
 
+pub fn listed(path: &[&str], flags: &[&str]) -> Result<(), String> {
+    let words: Vec<String> = path.iter().map(|word| (*word).to_owned()).collect();
+    let Some(command) = resolve(&words) else {
+        return Ok(());
+    };
+    let flags: Vec<String> = flags.iter().map(|word| (*word).to_owned()).collect();
+    let unknown = scan(command, &flags, true)
+        .into_iter()
+        .find_map(|token| match token {
+            Token::Unknown(word) => Some(word.to_owned()),
+            _ => None,
+        });
+    match unknown {
+        Some(word) => {
+            output::usage();
+            let options: Vec<&str> = command
+                .options(true)
+                .into_iter()
+                .map(|option| option.long)
+                .collect();
+            Err(text(
+                "unknown option `{word}` for job {command}; it takes {options}; see job {command} --help",
+                command,
+                &word,
+            )
+            .replace("{options}", &options.join(", ")))
+        }
+        None => Ok(()),
+    }
+}
+
 fn validate(command: &Command, args: &[String]) -> Result<(), String> {
     let fail = |key: &str, word: &str| {
         output::usage();
@@ -352,7 +384,7 @@ fn values<'a>(command: &Command, args: &'a [String], long: &str) -> Vec<&'a str>
         .collect()
 }
 
-fn given(command: &Command, args: &[String], long: &str) -> bool {
+pub fn given(command: &Command, args: &[String], long: &str) -> bool {
     scan(command, args, false)
         .iter()
         .any(|token| matches!(token, Token::Option { option, .. } if option.long == long))
@@ -362,6 +394,48 @@ fn text(key: &str, command: &Command, word: &str) -> String {
     message(key)
         .replace("{word}", word)
         .replace("{command}", &command.name())
+}
+
+pub fn global_options() -> &'static Group {
+    &table::GLOBAL
+}
+
+pub fn placed(command: &Command, args: &[String], added: &[&str]) -> Vec<String> {
+    let start = command.path.len().min(args.len());
+    let rest = &args[start..];
+    let mut dropped: Vec<usize> = Vec::new();
+    for token in scan(command, rest, true) {
+        match token {
+            Token::Option {
+                option,
+                value: Some(value),
+                at,
+            } if option.long == table::FORMAT_OPTION && output::FORMATS.contains(&value) => {
+                dropped.extend([at, at + 1]);
+            }
+            Token::Option { option, at, .. } if option.long == "--json" => dropped.push(at),
+            _ => {}
+        }
+    }
+    let end = rest
+        .iter()
+        .position(|word| word == "--")
+        .unwrap_or(rest.len());
+    let mut words: Vec<String> = args[..start].to_vec();
+    words.extend(
+        rest[..end]
+            .iter()
+            .enumerate()
+            .filter(|(at, _)| !dropped.contains(at))
+            .map(|(_, word)| word.clone()),
+    );
+    for option in added {
+        if *option == "--json" || !given(command, rest, option) {
+            words.push((*option).to_owned());
+        }
+    }
+    words.extend(rest[end..].iter().cloned());
+    words
 }
 
 pub fn takes_set(args: &[String]) -> bool {

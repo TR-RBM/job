@@ -71,6 +71,10 @@ const CATALOGUE: &[(&str, &str)] = &[
         "unbekannte Option `{word}` für job {command}; siehe job {command} --help",
     ),
     (
+        "unknown option `{word}` for job {command}; it takes {options}; see job {command} --help",
+        "unbekannte Option `{word}` für job {command}; möglich sind {options}; siehe job {command} --help",
+    ),
+    (
         "option `{word}` of job {command} needs a value; see job {command} --help",
         "Option `{word}` von job {command} braucht einen Wert; siehe job {command} --help",
     ),
@@ -1089,7 +1093,7 @@ const CATALOGUE: &[(&str, &str)] = &[
     ),
 ];
 
-fn german() -> bool {
+pub fn german() -> bool {
     ["LC_ALL", "LC_MESSAGES", "LANG"]
         .iter()
         .filter_map(|name| std::env::var(name).ok())
@@ -1103,7 +1107,11 @@ pub fn translated(key: &str) -> bool {
 }
 
 pub fn message(key: &str) -> String {
-    if german() {
+    message_in(german(), key)
+}
+
+pub fn message_in(german: bool, key: &str) -> String {
+    if german {
         CATALOGUE
             .iter()
             .find(|(english, _)| *english == key)

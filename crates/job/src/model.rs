@@ -371,6 +371,10 @@ pub struct ShimResult {
     pub oom_group_kill: u64,
     #[serde(default)]
     pub oom_kill: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub own_oom: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub own_oom_kill: Option<u64>,
     pub pids_max_events: u64,
     pub output_bytes: u64,
     #[serde(default)]

@@ -69,6 +69,17 @@ pub fn recovered(adopted: usize, changed: u64) {
     };
 }
 
+pub fn start() -> u64 {
+    STARTED.get().copied().unwrap_or_else(crate::shim::now_ms)
+}
+
+pub fn enforcement(backend: Backend) -> &'static str {
+    match backend {
+        Backend::Cgroup => "enforced",
+        Backend::Watch => "monitoring_only",
+    }
+}
+
 pub const STATES: [&str; 10] = [
     "held",
     "queued",
@@ -83,10 +94,8 @@ pub const STATES: [&str; 10] = [
 ];
 
 pub fn report(store: &Store, live: &BTreeMap<u64, Job>, backend: Backend) -> Health {
-    let now = crate::shim::now_ms();
-    let started = STARTED.get().copied().unwrap_or(now);
-    let mut jobs: BTreeMap<String, u64> =
-        STATES.iter().map(|name| ((*name).to_owned(), 0)).collect();
+    let mut health = fixed(store, backend);
+    let jobs = &mut health.jobs;
     for id in store.job_ids() {
         let state = live
             .get(&id)
@@ -99,6 +108,13 @@ pub fn report(store: &Store, live: &BTreeMap<u64, Job>, backend: Backend) -> Hea
                 .or_default() += 1;
         }
     }
+    health
+}
+
+pub fn fixed(store: &Store, backend: Backend) -> Health {
+    let now = crate::shim::now_ms();
+    let started = STARTED.get().copied().unwrap_or(now);
+    let jobs: BTreeMap<String, u64> = STATES.iter().map(|name| ((*name).to_owned(), 0)).collect();
     let recovery = *RECOVERY
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner());
@@ -111,11 +127,7 @@ pub fn report(store: &Store, live: &BTreeMap<u64, Job>, backend: Backend) -> Hea
             .unwrap_or(crate::migration::SCHEMA),
         protocol: crate::model::PROTOCOL,
         backend,
-        enforcement: match backend {
-            Backend::Cgroup => "enforced",
-            Backend::Watch => "monitoring_only",
-        }
-        .to_owned(),
+        enforcement: enforcement(backend).to_owned(),
         cgroup_required: REQUIRED.get().copied().unwrap_or(false),
         jobs,
         supervisors_adopted: recovery.adopted,

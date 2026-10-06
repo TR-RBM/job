@@ -161,14 +161,16 @@ impl Store {
     }
 
     pub fn save_job(&self, job: &Job) -> io::Result<()> {
+        let job = &revised(job);
         fs::create_dir_all(self.job_dir(job.id))?;
         write_json(&self.job_file(job.id), job)?;
         crate::pacing::job_record_written();
-        crate::operations::journal::observe_job(job);
+        observed(self, job);
         Ok(())
     }
 
     pub fn save_job_before_sync(&self, job: &Job) -> io::Result<()> {
+        let job = &revised(job);
         fs::create_dir_all(self.job_dir(job.id))?;
         let path = self.job_file(job.id);
         let (temporary, file) = temporary(&path, &serde_json::to_vec_pretty(job)?)?;
@@ -176,7 +178,7 @@ impl Store {
         drop(file);
         fs::rename(&temporary, &path)?;
         crate::pacing::job_record_written();
-        crate::operations::journal::observe_job(job);
+        observed(self, job);
         Ok(())
     }
 
@@ -198,6 +200,7 @@ impl Store {
         retry: bool,
         net_secret: Option<&str>,
     ) -> io::Result<()> {
+        let job = &revised(job);
         let transactions = self.root.join(".transactions");
         fs::DirBuilder::new()
             .mode(0o700)
@@ -248,7 +251,7 @@ impl Store {
             return Err(io::Error::last_os_error());
         }
         crate::pacing::directory(&self.root.join("jobs"))?;
-        crate::operations::journal::observe_job(job);
+        observed(self, job);
         Ok(())
     }
 
@@ -288,6 +291,17 @@ impl Store {
     pub fn trim_logs(&self, budget: u64) -> Vec<u64> {
         crate::streams::budget::trim(self, budget)
     }
+}
+
+pub fn revised(job: &Job) -> Job {
+    let mut saved = job.clone();
+    saved.durability.revision = Some(crate::clientif::index::revised(job));
+    saved
+}
+
+pub fn observed(store: &Store, job: &Job) {
+    crate::operations::journal::observe_job(job);
+    crate::clientif::index::observe(store, job);
 }
 
 struct SubmissionStage(PathBuf);

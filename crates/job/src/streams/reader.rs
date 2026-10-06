@@ -75,7 +75,50 @@ fn directory(store: &Store, id: u64, attempt: u64) -> io::Result<(File, Job)> {
     Err(invalid())
 }
 
+pub struct Kept {
+    pub meta: Option<super::Metadata>,
+    pub legacy: Option<u64>,
+    pub job: Job,
+}
+
 impl Reader {
+    pub fn end(&self) -> Option<u64> {
+        self.stop_sequence
+    }
+
+    pub fn kept(&self) -> io::Result<Kept> {
+        let (dir, job) = directory(
+            &Store {
+                root: self.root.clone(),
+            },
+            self.id,
+            self.attempt,
+        )?;
+        let root = PathBuf::from(format!("/proc/self/fd/{}", dir.as_raw_fd()));
+        if self.mode.is_none() {
+            let legacy = match regular(&root.join("output.log")) {
+                Ok(file) => file.metadata()?.len(),
+                Err(error) if error.kind() == io::ErrorKind::NotFound => 0,
+                Err(error) => return Err(error),
+            };
+            return Ok(Kept {
+                meta: None,
+                legacy: Some(legacy),
+                job,
+            });
+        }
+        let meta = match read_metadata(&root.join("streams.json")) {
+            Ok(meta) => Some(meta),
+            Err(error) if error.kind() == io::ErrorKind::NotFound => None,
+            Err(error) => return Err(error),
+        };
+        Ok(Kept {
+            meta,
+            legacy: None,
+            job,
+        })
+    }
+
     pub fn open(store: &Store, id: u64, attempt: Option<u64>) -> io::Result<Self> {
         let attempt = attempt
             .or_else(|| store.load_job(id).map(|j| j.attempt))

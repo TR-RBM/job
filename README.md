@@ -148,6 +148,7 @@ What these controls protect against, and what they do not, is in the [security m
 | Know how fast it is and what bounds it | | [Performance](docs/performance.md) |
 | Submit safely from a script that may repeat itself | `job submit --idempotency-key build-1234 -- make` | [Reliability](docs/reliability.md) |
 | Use job from another program | a diagnostic summary, a command policy file, a hook | [Automation](docs/integrations.md) |
+| Write a program that shows and steers the service while it runs | one connection: a snapshot, then every change as it happens, listings, output, and job's commands as words | [Client interface](docs/client-interface.md) |
 
 The [capability matrix](docs/capabilities.md) says for each capability how to request it, what it needs from the host, what happens when the host lacks it, and where it is tested. It also lists what is not available. The [release notes](docs/release-notes.md) say what is new, what changed incompatibly, and the [known limits](docs/release-notes.md#known-limits) of this release.
 
@@ -191,6 +192,7 @@ Topic pages:
 - [Namespaces, read-only root and private tmp](docs/isolation.md)
 - [Networks, their boundaries and proxy credentials](docs/networking.md)
 - [Automation](docs/integrations.md)
+- [Client interface: the service's protocol for interface programs](docs/client-interface.md)
 
 Reference:
 

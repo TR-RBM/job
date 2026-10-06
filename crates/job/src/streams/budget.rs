@@ -54,6 +54,14 @@ fn mark(directory: &Path, bytes: u64) {
 static UNREADABLE: Mutex<BTreeSet<u64>> = Mutex::new(BTreeSet::new());
 static MEASURED: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 
+static PASSED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+pub fn passed() -> Option<u64> {
+    PASSED
+        .load(std::sync::atomic::Ordering::Relaxed)
+        .then(measured)
+}
+
 pub fn measured() -> u64 {
     MEASURED.load(std::sync::atomic::Ordering::Relaxed)
 }
@@ -170,5 +178,6 @@ pub fn trim(store: &Store, budget: u64) -> Vec<u64> {
         removed.push(id);
     }
     MEASURED.store(total, std::sync::atomic::Ordering::Relaxed);
+    PASSED.store(true, std::sync::atomic::Ordering::Relaxed);
     removed
 }

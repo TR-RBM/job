@@ -10,6 +10,10 @@ Read [What changed incompatibly](#what-changed-incompatibly) before you upgrade.
 
 ## What is new
 
+**For programs that show the service**
+
+- A client interface on the service's socket, with a version number of its own: a greeting that names what the service answers, a subscription that gives a snapshot and then every change of a Job, Queue or Group in order, listings of Jobs by cursor in four orders, one Job in full with what the kernel confirmed at its start, the tree with its use, processes, output from a position, live use of the Jobs a client names, the command table as data, and `command`, which carries out a job command given as its words. It is described field by field in [the client interface](client-interface.md). job's own command does not use it and is unchanged.
+
 **Objects and lifecycle**
 
 - Groups that contain Queues and other Groups, with rename and move that keep identities. A new Queue has no settings and does not serialize its Jobs.

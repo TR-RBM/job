@@ -62,8 +62,7 @@ fn action(command: &Command, args: &[String]) -> Result<Action, String> {
         "cancel" => Action::Cancel {
             session: value(command, args, "--session")
                 .map(str::to_owned)
-                .or_else(|| std::env::var("JOB_SESSION").ok())
-                .unwrap_or_else(|| "unnamed".to_owned()),
+                .unwrap_or_else(crate::clientif::invocation::session),
         },
         "remove" => Action::Remove {
             allow_lost: given(command, args, "--allow-lost"),

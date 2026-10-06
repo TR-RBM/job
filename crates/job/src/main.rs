@@ -23,6 +23,7 @@ mod cgroup;
 mod cli2;
 mod cli_contract;
 mod client;
+mod clientif;
 mod commands;
 mod config;
 mod confine;
@@ -192,7 +193,7 @@ struct Options {
 fn parse_options(args: &[String]) -> Result<Options, String> {
     let mut options = Options {
         idempotency_key: None,
-        session: std::env::var("JOB_SESSION").unwrap_or_else(|_| "unnamed".to_string()),
+        session: clientif::invocation::session(),
         queue: None,
         declared: Declared::default(),
         budget_ms: DEFAULT_BUDGET_MS,
@@ -216,7 +217,7 @@ fn parse_options(args: &[String]) -> Result<Options, String> {
             break;
         }
         if flag == "--pty" {
-            options.declared.terminal = Some(terminal::Size::current());
+            options.declared.terminal = Some(clientif::invocation::terminal());
             i += 1;
             continue;
         }
@@ -397,6 +398,9 @@ fn socket() -> PathBuf {
 }
 
 fn call(request: Request) -> Result<Response, String> {
+    if let Some(answer) = clientif::invocation::exchange(&request) {
+        return answer;
+    }
     commands::output::contacted();
     Store::validate_default_selection().map_err(|e| e.to_string())?;
     let socket = socket();
@@ -571,7 +575,7 @@ fn submit(options: &Options) -> Result<model::Job, String> {
     if options.command.is_empty() {
         return Err(format!("no command after --\n{USAGE}"));
     }
-    let cwd = std::env::current_dir().map_err(|e| format!("no working directory: {e}"))?;
+    let cwd = clientif::invocation::cwd().map_err(|e| format!("no working directory: {e}"))?;
     let spec = client::spec(
         &options.command,
         cwd,
@@ -959,8 +963,11 @@ fn main_result() -> Result<ExitCode, String> {
         let args: Vec<String> = std::env::args().skip(1).collect();
         return service::run(&args);
     }
-    let args = commands::arguments();
-    if let Some(code) = commands::dispatch(&args)? {
+    carry_out(&commands::arguments())
+}
+
+fn carry_out(args: &[String]) -> Result<ExitCode, String> {
+    if let Some(code) = commands::dispatch(args)? {
         return Ok(code);
     }
     let Some((command, rest)) = args.split_first() else {
@@ -1021,7 +1028,7 @@ fn main_result() -> Result<ExitCode, String> {
             }
             let spec = Box::new(client::spec(
                 &options.command,
-                std::env::current_dir().map_err(|e| e.to_string())?,
+                clientif::invocation::cwd().map_err(|e| e.to_string())?,
                 options.session,
                 options.declared,
                 options.queue,
@@ -1680,7 +1687,11 @@ fn queue_command(rest: &[String]) -> Result<ExitCode, String> {
     {
         return object_command(objects::Kind::Queue, rest);
     }
-    let words: Vec<&str> = rest.iter().map(String::as_str).collect();
+    let words: Vec<&str> = rest
+        .iter()
+        .map(String::as_str)
+        .filter(|word| !(clientif::invocation::active() && *word == "--json"))
+        .collect();
     let request = match words.as_slice() {
         [] => return show_queues(None),
         ["add", name, flags @ ..] => Request::QueueAdd {
@@ -1688,6 +1699,7 @@ fn queue_command(rest: &[String]) -> Result<ExitCode, String> {
             change: queue_change(flags)?,
         },
         ["set", name, flags @ ..] => {
+            commands::listed(&["queue", "set"], flags)?;
             let change = queue_change(flags)?;
             if change == QueueChange::default() {
                 return Err(format!(
@@ -1908,7 +1920,7 @@ fn queue_change(flags: &[&str]) -> Result<QueueChange, String> {
 }
 
 fn absolute(path: &str) -> Result<PathBuf, String> {
-    let cwd = std::env::current_dir().map_err(|e| format!("no working directory: {e}"))?;
+    let cwd = clientif::invocation::cwd().map_err(|e| format!("no working directory: {e}"))?;
     Ok(cwd.join(path))
 }
 
@@ -2308,9 +2320,11 @@ fn object_command(kind: objects::Kind, rest: &[String]) -> Result<ExitCode, Stri
                     return Err(streams::message("duplicate output quota"));
                 }
             } else if word == "--pressure" {
-                let rules: serde_json::Value =
-                    serde_json::from_slice(&std::fs::read(value).map_err(|e| e.to_string())?)
-                        .map_err(|e| e.to_string())?;
+                let rules: serde_json::Value = serde_json::from_slice(
+                    &std::fs::read(clientif::invocation::file(value)?)
+                        .map_err(|e| e.to_string())?,
+                )
+                .map_err(|e| e.to_string())?;
                 pressure::control::validate_local(&rules)?;
                 config.insert("pressure".to_owned(), rules);
             } else if let Some(result) = word

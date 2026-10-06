@@ -176,6 +176,10 @@ The hook decides in this order:
 
 Input that is not a JSON object with a `command` ends with status 125, a message on standard error and nothing on standard output.
 
+## A program that stays connected
+
+The parts above serve a program that asks once and leaves. A program that shows the service while it runs, such as a terminal interface or a dashboard, speaks the [client interface](client-interface.md) on the service's socket: one connection, a snapshot, then changes as they happen.
+
 ## What these are not
 
 - They are not required. Every capability in the [user guide](user-guide.md) works without them.

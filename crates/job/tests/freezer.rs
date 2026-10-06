@@ -2862,3 +2862,359 @@ fn pidns_leftovers_exit_status_and_cancel_are_recorded_from_the_cgroup() {
     pidns_gone("22.4321");
     pidns_removed(&service, &stubborn);
 }
+
+const NESTED_KILL: &str = r#"
+cg=/sys/fs/cgroup$(sed -n 's/^0:://p' /proc/self/cgroup)
+mkdir "$cg/main" "$cg/small"
+echo $$ > "$cg/main/cgroup.procs"
+echo +memory > "$cg/cgroup.subtree_control"
+echo 16M > "$cg/small/memory.max"
+echo 0 > "$cg/small/memory.swap.max"
+(echo $BASHPID > "$cg/small/cgroup.procs"; exec sh -c 'head -c 96M /dev/zero | tail -c 96M > /dev/null')
+echo "inner $?"
+echo $$ > "$cg/cgroup.procs" 2> /dev/null || true
+sleep 0.2
+rmdir "$cg/small"
+"#;
+
+#[test]
+#[ignore = "requires a writable delegated cgroup; run through job"]
+fn a_kill_in_a_cgroup_the_job_made_does_not_stop_a_job_that_exits_zero() {
+    let service = Service::start("nested-kill-zero");
+    let script = format!("{NESTED_KILL}exit 0\n");
+    let id = service.ok(&["submit", "--", "bash", "-c", &script]);
+    service.cli(&["wait", &id]);
+    let status = service.status(&id);
+    assert_eq!(status["state"], "Succeeded", "{status}");
+    assert!(status["stop"].is_null(), "{status}");
+    assert!(
+        status["result"]["oom_kill"].as_u64().unwrap() > 0,
+        "{status}"
+    );
+    assert_eq!(status["result"]["own_oom"], 0, "{status}");
+    assert_eq!(status["result"]["own_oom_kill"], 0, "{status}");
+    let note = status["result"]["notes"][0].as_str().unwrap_or_default();
+    assert!(note.contains("killed for memory"), "{status}");
+}
+
+#[test]
+#[ignore = "requires a writable delegated cgroup; run through job"]
+fn a_kill_in_a_cgroup_the_job_made_stops_a_job_that_fails() {
+    let service = Service::start("nested-kill-fail");
+    let script = format!("{NESTED_KILL}exit 1\n");
+    let id = service.ok(&["submit", "--", "bash", "-c", &script]);
+    service.cli(&["wait", &id]);
+    let status = service.status(&id);
+    assert_eq!(status["state"], "Failed", "{status}");
+    assert_eq!(status["stop"]["kind"], "Memory", "{status}");
+}
+
+fn client_interface_asked(
+    reader: &mut std::io::BufReader<std::os::unix::net::UnixStream>,
+    op: &str,
+    args: serde_json::Value,
+) -> serde_json::Value {
+    use std::io::BufRead;
+    let request = serde_json::json!({"id": 1, "op": op, "args": args}).to_string();
+    reader.get_mut().write_all(request.as_bytes()).unwrap();
+    reader.get_mut().write_all(b"\n").unwrap();
+    let mut line = String::new();
+    reader.read_line(&mut line).unwrap();
+    let answer: serde_json::Value = serde_json::from_str(&line).unwrap();
+    assert!(answer.get("error").is_none(), "{op}: {answer}");
+    answer["ok"].clone()
+}
+
+#[test]
+#[ignore = "requires a writable delegated cgroup; run through job"]
+fn client_interface_reads_cgroup_figures_ceilings_processes_and_confirmation() {
+    use std::io::BufRead;
+    let service = Service::start("client-interface");
+    service.ok(&[
+        "group",
+        "create",
+        "capped",
+        "--memory-max",
+        "512M",
+        "--pids-max",
+        "200",
+    ]);
+    service.ok(&["queue", "create", "capped/work"]);
+    let id: u64 = service
+        .ok(&[
+            "submit",
+            "-q",
+            "capped/work",
+            "--mem",
+            "64M",
+            "--no-new-privs",
+            "yes",
+            "--",
+            "sleep 25 & sleep 26 & touch started; wait",
+        ])
+        .parse()
+        .unwrap();
+    service.wait_file("started");
+    let stream =
+        std::os::unix::net::UnixStream::connect(service.root.join("state/daemon.sock")).unwrap();
+    stream
+        .set_read_timeout(Some(Duration::from_secs(20)))
+        .unwrap();
+    let mut reader = std::io::BufReader::new(stream);
+    reader
+        .get_mut()
+        .write_all(b"{\"hello\":{\"versions\":{\"min\":1,\"max\":1}}}\n")
+        .unwrap();
+    let mut greeting = String::new();
+    reader.read_line(&mut greeting).unwrap();
+    let greeting: serde_json::Value = serde_json::from_str(&greeting).unwrap();
+    assert_eq!(greeting["hello"]["backend"], "cgroup");
+    assert!(
+        greeting["hello"]["capabilities"]
+            .as_array()
+            .unwrap()
+            .contains(&serde_json::json!("cgroup"))
+    );
+    let answer = client_interface_asked(&mut reader, "job", serde_json::json!({"id": id}));
+    let (row, job) = (&answer["row"], &answer["job"]);
+    assert_eq!(row["state"], "running");
+    assert_eq!(job["backend"], "cgroup");
+    assert_eq!(row["memory_max"], 64 << 20);
+    let cgroup = row["cgroup"].as_str().unwrap();
+    assert!(cgroup.ends_with(&format!("/{id}")), "{cgroup}");
+    assert_eq!(job["workload_cgroup"], row["cgroup"]);
+    assert_eq!(job["reservation"]["memory_source"]["kind"], "declared");
+    assert_eq!(row["confirmed"]["no_new_privs"], true);
+    assert_eq!(row["confirmed"]["pid_namespace"], false);
+    let confirmed = &answer["confirmed"];
+    assert!(confirmed["at_ms"].as_u64().is_some());
+    assert_eq!(confirmed["security_controls"]["no_new_privs"], true);
+    assert_eq!(
+        confirmed["sources"]["no_new_privs"],
+        serde_json::json!({"from": "job"})
+    );
+    let live = &answer["live"];
+    for figure in [
+        "at_ms",
+        "cpu_at_ms",
+        "memory",
+        "peak_memory",
+        "pids",
+        "peak_pids",
+        "written",
+        "cpu_ms",
+        "throttled_ms",
+        "oom_kill",
+        "oom_group_kill",
+        "pids_max_events",
+    ] {
+        assert!(live[figure].as_u64().is_some(), "{figure}: {live}");
+    }
+    assert!(live["memory"].as_u64().unwrap() > 0);
+    assert!(live["pids"].as_u64().unwrap() >= 3);
+    assert_eq!(live["oom_kill"], 0);
+    let processes = client_interface_asked(&mut reader, "processes", serde_json::json!({"id": id}));
+    assert_eq!(processes["source"], "cgroup");
+    assert_eq!(processes["active"], true);
+    let named: Vec<&str> = processes["processes"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|process| process["name"].as_str().unwrap())
+        .collect();
+    assert_eq!(named.iter().filter(|name| **name == "sleep").count(), 2);
+    let tree = client_interface_asked(&mut reader, "tree", serde_json::json!({}));
+    let nodes = tree["nodes"].as_array().unwrap();
+    let node = |path: &str| nodes.iter().find(|node| node["path"] == path).unwrap();
+    assert_eq!(node("")["use"]["domains"], serde_json::json!([]));
+    let capped = node("capped");
+    let capped_id = capped["object"]["id"].as_u64().unwrap();
+    let domains = capped["use"]["domains"].as_array().unwrap();
+    assert_eq!(domains.len(), 1);
+    let domain = &domains[0];
+    assert_eq!(domain["object_id"], capped_id);
+    assert_eq!(domain["object_path"], "capped");
+    assert!(
+        domain["cgroup"]
+            .as_str()
+            .unwrap()
+            .ends_with(&format!("domain-{capped_id}"))
+    );
+    assert_eq!(domain["limits"]["memory.max"], (512u64 << 20).to_string());
+    assert_eq!(domain["limits"]["pids.max"], "200");
+    assert!(domain["counters"]["at_ms"].as_u64().is_some());
+    assert!(domain["counters"]["memory"].as_u64().unwrap() > 0);
+    assert!(domain["counters"]["pids"].as_u64().unwrap() >= 3);
+    assert!(domain["counters"]["cpu_ms"].as_u64().is_some());
+    assert_eq!(
+        capped["aggregate_domains"][0]["limits"]["memory.max"],
+        (512u64 << 20).to_string()
+    );
+    assert_eq!(
+        node("capped/work")["use"]["domains"][0]["cgroup"],
+        domain["cgroup"]
+    );
+    assert_eq!(node("default")["use"]["domains"], serde_json::json!([]));
+    service.ok(&["cancel", &id.to_string()]);
+    let deadline = Instant::now() + Duration::from_secs(20);
+    loop {
+        let ended = client_interface_asked(&mut reader, "job", serde_json::json!({"id": id}));
+        if ended["row"]["state"] == "cancelled" {
+            assert!(
+                ended["row"]["usage"]["cpu_ms"].as_u64().is_some(),
+                "{ended}"
+            );
+            assert_eq!(ended["live"], serde_json::Value::Null);
+            break;
+        }
+        assert!(Instant::now() < deadline, "{ended}");
+        std::thread::sleep(Duration::from_millis(50));
+    }
+}
+
+fn client_interface_cpu_ms(pid: u32) -> u64 {
+    let stat = fs::read_to_string(format!("/proc/{pid}/stat")).unwrap();
+    let fields: Vec<&str> = stat
+        .rsplit_once(')')
+        .unwrap()
+        .1
+        .split_whitespace()
+        .collect();
+    let ticks: u64 = fields[11].parse::<u64>().unwrap() + fields[12].parse::<u64>().unwrap();
+    ticks * 1000 / unsafe { libc::sysconf(libc::_SC_CLK_TCK) } as u64
+}
+
+#[test]
+#[ignore = "requires a writable delegated cgroup; run through job"]
+fn client_interface_subscription_samples_live_figures_of_the_interest_set() {
+    use std::io::BufRead;
+    let service = Service::start("client-live");
+    let connect = || {
+        let stream = UnixStream::connect(service.root.join("state/daemon.sock")).unwrap();
+        stream
+            .set_read_timeout(Some(Duration::from_secs(30)))
+            .unwrap();
+        let mut reader = std::io::BufReader::new(stream);
+        reader
+            .get_mut()
+            .write_all(b"{\"hello\":{\"versions\":{\"min\":1,\"max\":1}}}\n")
+            .unwrap();
+        let mut greeting = String::new();
+        reader.read_line(&mut greeting).unwrap();
+        reader
+    };
+    let mut actor = connect();
+    let mut submit = |program: &[&str]| -> u64 {
+        let mut words = vec![
+            "submit",
+            "--cpu-request",
+            "0.01",
+            "--memory-request",
+            "1M",
+            "--",
+        ];
+        words.extend_from_slice(program);
+        let answer = client_interface_asked(
+            &mut actor,
+            "command",
+            serde_json::json!({"words": words, "cwd": service.root}),
+        );
+        assert_eq!(answer["exit_status"], 0, "{answer}");
+        answer["data"]["id"].as_u64().unwrap()
+    };
+    let busy = submit(&["timeout", "150", "sh", "-c", "while :; do :; done"]);
+    let mut ids = vec![busy];
+    for _ in 0..199 {
+        ids.push(submit(&["sleep", "150"]));
+    }
+    let deadline = Instant::now() + Duration::from_secs(120);
+    loop {
+        let totals = client_interface_asked(&mut actor, "totals", serde_json::json!({}));
+        if totals["counts"]["running"] == 200 {
+            break;
+        }
+        assert!(Instant::now() < deadline, "{totals}");
+        std::thread::sleep(Duration::from_millis(200));
+    }
+    std::thread::sleep(Duration::from_secs(2));
+    let pid = service.child.id();
+    let before = client_interface_cpu_ms(pid);
+    std::thread::sleep(Duration::from_secs(10));
+    let alone = client_interface_cpu_ms(pid) - before;
+    let mut watcher = connect();
+    let snapshot = client_interface_asked(
+        &mut watcher,
+        "subscribe",
+        serde_json::json!({"rows": {"limit": 0}, "interest": ids}),
+    );
+    assert_eq!(snapshot["snapshot"]["interest"], 200);
+    let before = client_interface_cpu_ms(pid);
+    let until = Instant::now() + Duration::from_secs(10);
+    let mut live = Vec::new();
+    let mut lines = 0;
+    while Instant::now() < until {
+        let mut line = String::new();
+        watcher.read_line(&mut line).unwrap();
+        let line: serde_json::Value = serde_json::from_str(&line).unwrap();
+        lines += 1;
+        if line["push"] == "live" {
+            live.push(line);
+        }
+    }
+    let watched = client_interface_cpu_ms(pid) - before;
+    println!(
+        "service CPU in 10 s with 200 running Jobs: {alone} ms without a subscriber, {watched} ms with one subscriber and 200 Jobs of interest; {lines} lines, {} of them live",
+        live.len()
+    );
+    assert!(live.len() >= 3 && live.len() <= 12, "{}", live.len());
+    let mut seen = std::collections::BTreeSet::new();
+    let mut spent = Vec::new();
+    for line in &live {
+        assert!(line["at_ms"].as_u64().is_some());
+        for entry in line["jobs"].as_array().unwrap() {
+            let id = entry["id"].as_u64().unwrap();
+            assert!(ids.contains(&id), "{entry}");
+            seen.insert(id);
+            for figure in [
+                "cpu_at_ms",
+                "memory",
+                "peak_memory",
+                "pids",
+                "peak_pids",
+                "written",
+                "cpu_ms",
+                "throttled_ms",
+                "oom_kill",
+                "oom_group_kill",
+                "pids_max_events",
+            ] {
+                assert!(entry[figure].as_u64().is_some(), "{figure}: {entry}");
+            }
+            if id == busy {
+                spent.push((
+                    entry["cpu_at_ms"].as_u64().unwrap(),
+                    entry["cpu_ms"].as_u64().unwrap(),
+                ));
+            }
+        }
+    }
+    assert_eq!(seen.len(), 200);
+    assert!(spent.len() >= 3, "{spent:?}");
+    assert!(
+        spent
+            .windows(2)
+            .all(|pair| pair[0].0 < pair[1].0 && pair[0].1 < pair[1].1),
+        "{spent:?}"
+    );
+    let (first, last) = (spent[0], spent[spent.len() - 1]);
+    let rate = (last.1 - first.1) as f64 / (last.0 - first.0) as f64;
+    assert!(rate > 0.2 && rate < 1.5, "{rate}");
+    drop(watcher);
+    std::thread::sleep(Duration::from_secs(3));
+    let before = client_interface_cpu_ms(pid);
+    std::thread::sleep(Duration::from_secs(5));
+    println!(
+        "service CPU in 5 s after the subscriber left: {} ms",
+        client_interface_cpu_ms(pid) - before
+    );
+}

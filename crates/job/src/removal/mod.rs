@@ -713,6 +713,9 @@ pub fn recover(store: &Store) -> io::Result<bool> {
     sync(&store.root.join(".removed"))?;
     sync(&store.root)?;
     retire_jobs(store, &transaction, &trash)?;
+    for job in &transaction.receipt.selection.jobs {
+        crate::clientif::index::removed(job.id);
+    }
     crate::durability::idempotency::forget(
         store,
         &transaction

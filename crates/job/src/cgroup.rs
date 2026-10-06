@@ -20,6 +20,8 @@ pub struct Counters {
     pub memory_peak: u64,
     pub oom_group_kill: u64,
     pub oom_kill: u64,
+    pub own_oom: Option<u64>,
+    pub own_oom_kill: Option<u64>,
     pub pids_current: u64,
     pub pids_peak: u64,
     pub pids_max_events: u64,
@@ -418,6 +420,7 @@ impl Tree {
 
     pub fn counters(path: &Path) -> Counters {
         let memory_events = read(path, "memory.events");
+        let own_events = fs::read_to_string(path.join("memory.events.local")).ok();
         let pids_events = read(path, "pids.events");
         let cpu_stat = read(path, "cpu.stat");
         let memory_stat = read(path, "memory.stat");
@@ -426,6 +429,10 @@ impl Tree {
             memory_peak: read_number(path, "memory.peak"),
             oom_group_kill: keyed_value(&memory_events, "oom_group_kill"),
             oom_kill: keyed_value(&memory_events, "oom_kill"),
+            own_oom: own_events.as_deref().map(|text| keyed_value(text, "oom")),
+            own_oom_kill: own_events
+                .as_deref()
+                .map(|text| keyed_value(text, "oom_kill")),
             pids_current: read_number(path, "pids.current"),
             pids_peak: read_number(path, "pids.peak"),
             pids_max_events: keyed_value(&pids_events, "max"),

@@ -334,6 +334,8 @@ pub fn sync_job_directories(store: &crate::store::Store, ids: &[u64]) -> io::Res
 
 pub fn settle_records(store: &crate::store::Store, jobs: &[crate::model::Job]) -> io::Result<()> {
     let mut staged = Vec::with_capacity(jobs.len());
+    let jobs: Vec<crate::model::Job> = jobs.iter().map(crate::store::revised).collect();
+    let jobs = jobs.as_slice();
     let result = (|| -> io::Result<()> {
         for job in jobs {
             let staging = staged_record(store, job.id);
@@ -360,7 +362,7 @@ pub fn settle_records(store: &crate::store::Store, jobs: &[crate::model::Job]) -
         return Err(error);
     }
     for job in jobs {
-        crate::operations::journal::observe_job(job);
+        crate::store::observed(store, job);
     }
     Ok(())
 }

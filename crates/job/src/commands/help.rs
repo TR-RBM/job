@@ -108,7 +108,7 @@ fn label(option: &Opt) -> String {
     label
 }
 
-fn synopsis(command: &Command) -> Vec<String> {
+pub fn synopsis(command: &Command) -> Vec<String> {
     let mut line = format!("job {}", command.name());
     if command.groups().len() > 1 || command.kind.is_some() {
         line.push_str(" [OPTIONS]");

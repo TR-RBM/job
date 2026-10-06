@@ -740,6 +740,16 @@ pub fn run(store: &Store, id: u64, cgroup: Option<PathBuf>) -> i32 {
         }
     };
     isolation_handle.adopt(&child);
+    if remote.is_none() {
+        crate::clientif::confirmed::record(
+            store,
+            id,
+            job.attempt,
+            isolation_handle.applied.as_ref(),
+            applied_security.as_ref(),
+            applied_process.as_ref(),
+        );
+    }
 
     let placing = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(true));
     let placer = monitor.clone().map(|(display, target)| {
@@ -842,6 +852,8 @@ pub fn run(store: &Store, id: u64, cgroup: Option<PathBuf>) -> i32 {
             let counters = Tree::counters(path);
             result.oom_group_kill = counters.oom_group_kill;
             result.oom_kill = counters.oom_kill;
+            result.own_oom = counters.own_oom;
+            result.own_oom_kill = counters.own_oom_kill;
             result.pids_max_events = counters.pids_max_events;
             Usage {
                 peak_memory: counters.memory_peak,
