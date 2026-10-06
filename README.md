@@ -57,23 +57,87 @@ root
 
 Every Job belongs to one Queue and every Queue and Group to one parent Group. The root Group and the `default` Queue exist without setup. A new Queue has no settings of its own and changes organization only. A Group here is not a Unix group, a process group or a kernel cgroup.
 
-## Capabilities
+A Job is in one of ten states: `held`, `queued`, `starting`, `running`, `suspended`, `stopping`, `succeeded`, `failed`, `cancelled` or `lost`.
 
-- Run, submit, hold, edit, move, release, retry, cancel, signal, suspend and continue Jobs; every retry is a numbered attempt with its own output.
-- Queues and Groups in one tree, with pause, close, concurrency ceilings and inherited defaults, labels for classification, and an explanation of where each setting comes from.
-- Optional admission priority, aging, strict order, backfill and fair share between collections.
-- Optional CPU, memory and device I/O requests, limits and weights, per Job or shared by a Queue or Group, changeable while work runs.
-- Optional pressure observation and admission rules based on Linux PSI.
-- Optional CPU affinity, NUMA policy and process resource limits.
-- Optional `no_new_privs`, capability reduction, system call deny lists, write confinement, namespaces, a read-only root and a private temporary directory.
-- Optional network boundaries: no network, a proxy, a WireGuard tunnel, a bandwidth ceiling.
-- Separate recorded stdout and stderr with retention quotas, and shared persistent terminals.
-- A journal of lifecycle events, queue depth and wait statistics, a health report, and an audit journal of every request that changes something.
-- A socket that can be shared with one Unix group, for a team that trusts each other.
-- Execution on another host over SSH.
-- Structured JSON output, tab-separated listings, manual pages, and Bash and fish completion.
+## What you can do, and where it is described
 
-The [capability matrix](docs/capabilities.md) says for each of these how to request it, what it needs from the host, what happens when the host lacks it, and where it is tested. It also lists what is not available.
+Each line names a task, shows how it looks, and links to the page that explains it in full. Everything after the first two rows is optional and off until asked for.
+
+### Running and following work
+
+| Task | For example | Described in |
+|---|---|---|
+| Run a command and wait, or submit it and leave | `job run -- make`, `job submit -- make` | [Commands, shells and waiting](docs/cli-execution.md) |
+| Wait for one Job or several, with a time limit | `job wait 42`, `job wait 42-45 --timeout 10m` | [Commands, shells and waiting](docs/cli-execution.md) |
+| Read output while it is written, stdout and stderr apart | `job logs --follow 42`, `job logs 42 --stream stderr` | [Output recording and live clients](docs/output-recording.md) |
+| Limit how much output is kept | `job run --output-tail 4M -- make` | [Output recording and live clients](docs/output-recording.md) |
+| Work in a program that keeps its terminal | `job run --pty -- bash`, `job attach 42` | [User guide](docs/user-guide.md) |
+| Hold a Job, change it, release it, retry it | `job create -- make`, `job edit 42 -- make all`, `job release 42`, `job retry 42` | [User guide](docs/user-guide.md) |
+| Cancel, signal, suspend and continue | `job cancel 42`, `job signal -s HUP 42`, `job suspend 42` | [Cancel Jobs and collections](docs/cancellation.md) |
+| Act on many Jobs at once | `job cancel 1-10`, `job release 1,4,7-9`, `job cancel --dry-run 1-10` | [Commands, shells and waiting](docs/cli-execution.md) |
+| Delete records that are no longer needed | `job remove 1-10` | [Removing execution records](docs/record-removal.md) |
+| Run on another host over SSH | `job run --on user@host -- make` | [User guide](docs/user-guide.md) |
+
+### Finding out what happens and why
+
+| Task | For example | Described in |
+|---|---|---|
+| List Jobs, including ended ones, by state or label | `job list --all --state failed`, `job list --label team=build` | [Commands, shells and waiting](docs/cli-execution.md) |
+| See one Job with its attempts | `job show 42`, `job attempts 42` | [User guide](docs/user-guide.md) |
+| Ask why a Job waits, or where a setting comes from | `job explain 42`, `job explain development/builds` | [Admission ordering](docs/scheduling.md) |
+| Follow state changes as they happen | `job events --follow` | [Operating the service](docs/operations.md) |
+| See who changed what | `job audit` | [Reliability](docs/reliability.md) |
+| Check the host and the service | `job doctor`, `job host` | [Operating the service](docs/operations.md) |
+| Read answers from a script | `job list --format json`, `job list --format tsv` | [Commands, shells and waiting](docs/cli-execution.md) |
+
+### Organizing and ordering work
+
+| Task | For example | Described in |
+|---|---|---|
+| Build a tree of Queues and Groups, with labels | `job group create development`, `job queue create development/builds` | [User guide](docs/user-guide.md) |
+| Stop new starts or new submissions for a subtree | `job queue pause development/builds`, `job group close development` | [User guide](docs/user-guide.md) |
+| Limit how many Jobs run at once | `job queue set development/builds --max-running 4` | [User guide](docs/user-guide.md) |
+| Move a waiting Job to another Queue | `job move 42 --queue development/tests` | [Commands, shells and waiting](docs/cli-execution.md) |
+| Order waiting work by priority, aging, strict order or fair share | `job submit --priority 100 -- make` | [Admission ordering](docs/scheduling.md) |
+| Name a set of settings once and reuse it | `job submit --execution-profile build@2 -- make` | [Execution profiles and scheduling classes](docs/execution-profiles.md) |
+
+### Resources
+
+| Task | For example | Described in |
+|---|---|---|
+| Reserve, limit and weight CPU, memory and device I/O | `job run --memory-max 4G --cpu-limit 2 -- make` | [Resource requests and controls](docs/resources.md) |
+| Give a Queue or Group a shared ceiling, or defaults for its Jobs | `job queue set development/builds --job-memory-max 4G` | [Resource requests and controls](docs/resources.md) |
+| Change limits while work runs | `job update 42 --memory-max 8G` | [Resource requests and controls](docs/resources.md) |
+| Hold new starts while the host is under pressure | rules in the service configuration | [Pressure observation and admission](docs/pressure.md) |
+| Choose CPUs, a NUMA policy and process limits | `job run --cpu-affinity 0-3 --rlimit nofile=1024 -- make` | [CPU placement, NUMA and process limits](docs/process-controls.md) |
+
+### Containment
+
+| Task | For example | Described in |
+|---|---|---|
+| Forbid gaining privileges, drop capabilities, refuse system calls | `job run --no-new-privs yes --cap-drop all --seccomp-deny ptrace -- cmd` | [no_new_privs, capabilities and seccomp](docs/security-controls.md) |
+| Limit where a Job may write | `job run --confine -- cmd` | [Security model](docs/security.md) |
+| Give a Job its own namespaces, a read-only root, a private tmp | `job run --namespaces user,mount,pid --root read-only --private-tmp yes -- cmd` | [Namespaces, read-only root and private tmp](docs/isolation.md) |
+| Cut a Job off from the network, or send it through a proxy or a tunnel | `job run --net none -- cmd` | [Networks, their boundaries and proxy credentials](docs/networking.md) |
+| Use a network the administrator prepared and named | `job run --net profile:updates -- cmd`, `job net list` | [Networks, their boundaries and proxy credentials](docs/networking.md) |
+| Cap bandwidth for a Job or a Queue | `job run --bandwidth 10Mbit -- cmd` | [Networks, their boundaries and proxy credentials](docs/networking.md) |
+
+What these controls protect against, and what they do not, is in the [security model](docs/security.md). In short: every client admitted to the service has equal control, and two Jobs of the same Unix user are not protected from each other by default.
+
+### Running the service
+
+| Task | For example | Described in |
+|---|---|---|
+| Install, start under a service manager, delegate a cgroup | `make install`, `jobd` | [Administration and installation](docs/administration.md) |
+| Configure the service | `job config check FILE`, `job config show` | `job.conf(5)`, [Administration and installation](docs/administration.md) |
+| Share one service with a Unix group | `[socket] group` in the configuration | [Administration and installation](docs/administration.md) |
+| Back up and restore the state, or convert it from an earlier version | `job state backup --source DIR --destination DIR` | [State migration and restoration](docs/migration.md) |
+| Know what survives a crash or a restart | | [Reliability](docs/reliability.md) |
+| Know how fast it is and what bounds it | | [Performance](docs/performance.md) |
+| Submit safely from a script that may repeat itself | `job submit --idempotency-key build-1234 -- make` | [Reliability](docs/reliability.md) |
+| Use job from another program | a diagnostic summary, a command policy file, a hook | [Automation](docs/integrations.md) |
+
+The [capability matrix](docs/capabilities.md) says for each capability how to request it, what it needs from the host, what happens when the host lacks it, and where it is tested. It also lists what is not available. The [release notes](docs/release-notes.md) say what is new, what changed incompatibly, and the [known limits](docs/release-notes.md#known-limits) of this release.
 
 ## Installation
 
@@ -88,19 +152,39 @@ job doctor
 
 `DESTDIR` stages the same tree elsewhere for a package, as in `make install PREFIX=/usr DESTDIR=/tmp/pkg`. `make install` puts `job` and the service entry point `jobd` in `bin`; the manuals `job(1)`, `job.conf(5)`, `job(7)` and `jobd(8)` under `share/man`; Bash and fish completion; a systemd system unit and a systemd user unit; and under `share/doc/job` the licence, the administration guide, the migration guide and a runit run script. The other guides are read from the source tree. It creates no user, enables no service and changes no kernel setting. `make uninstall` removes exactly what was installed.
 
-`job doctor` checks the host and the service setup and says what to do for each finding. The [administration guide](docs/administration.md) covers the service, cgroup delegation, file locations, sharing the socket with a Unix group, and configuration.
+`job doctor` checks the host and the service setup and says what to do for each finding. It works without a running service.
+
+What the host needs: Linux on x86_64 with the unified cgroup hierarchy. Enforced limits, suspension and I/O control need a cgroup delegated to the service; without one the service runs and says that limits are watched, not enforced. The systemd units are shipped but were not yet run under systemd; the [administration guide](docs/administration.md) has a checklist for the first use.
 
 ## Documentation
 
+Guides:
+
 - [User guide](docs/user-guide.md): the path through the product, with links to the topic pages.
-- [Administration guide](docs/administration.md) and [migration guide](docs/migration.md).
-- [Capability matrix](docs/capabilities.md) and [security model](docs/security.md).
+- [Administration and installation](docs/administration.md) and [state migration and restoration](docs/migration.md).
 - [Operating the service](docs/operations.md), [reliability](docs/reliability.md) and [performance](docs/performance.md).
+- [Security model](docs/security.md) and [capability matrix](docs/capabilities.md).
+- [Release notes](docs/release-notes.md).
+
+Topic pages:
+
+- [Commands, shells and waiting](docs/cli-execution.md)
+- [Output recording and live clients](docs/output-recording.md)
+- [Cancel Jobs and collections](docs/cancellation.md) and [removing execution records](docs/record-removal.md)
+- [Admission ordering](docs/scheduling.md) and [execution profiles and scheduling classes](docs/execution-profiles.md)
+- [Resource requests and controls](docs/resources.md)
+- [Pressure observation and admission](docs/pressure.md) and [comparing pressure policies](docs/pressure-benchmark.md)
+- [CPU placement, NUMA and process limits](docs/process-controls.md)
+- [no_new_privs, capabilities and seccomp](docs/security-controls.md)
+- [Namespaces, read-only root and private tmp](docs/isolation.md)
+- [Networks, their boundaries and proxy credentials](docs/networking.md)
+- [Automation](docs/integrations.md)
+
+Reference:
+
 - [Syntax reference](docs/reference/syntax.md): every command and option, generated from the program.
-- [Release notes](docs/release-notes.md), with the [known limits](docs/release-notes.md#known-limits) of this release.
-- [Automation](docs/integrations.md): the diagnostic summary, classifying a command line, the command policy file and the hook.
 - Manuals: `job(1)` for commands, `job.conf(5)` for configuration, `job(7)` for concepts, `jobd(8)` for the service. From a checkout, `man -l man/job.1` shows a page without installing.
-- `job help`, and `job COMMAND --help` for one command.
+- `job help`, and `job COMMAND --help` for one command, which also lists its exit statuses.
 
 ## Contributing and security
 
