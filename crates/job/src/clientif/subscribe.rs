@@ -70,7 +70,7 @@ impl Subscription {
         if board.totals != self.totals {
             self.totals.clone_from(&board.totals);
             let line = format!(
-                "{{\"push\":\"totals\",\"now_ms\":{},\"seq\":{},{}}}",
+                "{{\"push\":\"totals\",\"sampled\":true,\"now_ms\":{},\"seq\":{},{}}}",
                 crate::shim::now_ms(),
                 changes::last(),
                 board.totals
@@ -85,7 +85,7 @@ impl Subscription {
             .collect();
         if !changed.is_empty() {
             let line = format!(
-                "{{\"push\":\"use\",\"at_ms\":{},\"objects\":[{}]}}",
+                "{{\"push\":\"use\",\"sampled\":true,\"at_ms\":{},\"objects\":[{}]}}",
                 board.at_ms,
                 changed.join(",")
             );
@@ -118,7 +118,7 @@ impl Subscription {
         }
         if !entries.is_empty() {
             let line = format!(
-                "{{\"push\":\"live\",\"at_ms\":{},\"jobs\":[{}]}}",
+                "{{\"push\":\"live\",\"sampled\":true,\"at_ms\":{},\"jobs\":[{}]}}",
                 board.at_ms,
                 entries.join(",")
             );
@@ -148,7 +148,7 @@ impl Subscription {
         }
         if self.quiet.elapsed() >= HEARTBEAT {
             let line = format!(
-                "{{\"push\":\"heartbeat\",\"now_ms\":{},\"seq\":{}}}",
+                "{{\"push\":\"heartbeat\",\"sampled\":true,\"now_ms\":{},\"seq\":{}}}",
                 crate::shim::now_ms(),
                 changes::last()
             );

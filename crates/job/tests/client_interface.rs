@@ -468,6 +468,16 @@ fn client_interface_commands_are_the_command_table_in_both_languages() {
             .ok(&["queue", "pause", "--help"])
             .contains(pause["summary"].as_str().unwrap())
     );
+    let help = options
+        .iter()
+        .find(|option| option["long"] == "--help")
+        .unwrap();
+    assert_eq!(help["short"], "-h");
+    assert_eq!(format["short"], Value::Null);
+    assert_eq!(pause["end_of_options"], false);
+    assert!(pause["notes"].is_array());
+    assert!(pause["groups"][0]["heading"].is_string());
+    assert_eq!(pause["groups"][0]["legacy"], false);
     let submit = find(json!(["submit"]));
     assert_eq!(submit["section"], "execution");
     assert_eq!(submit["trailing_command"], true);
@@ -1036,4 +1046,107 @@ fn client_interface_refuses_the_thirty_third_connection_of_one_user() {
         assert!(Instant::now() < deadline);
         std::thread::sleep(Duration::from_millis(50));
     }
+}
+
+#[test]
+fn client_interface_native_takes_each_listed_request_in_its_written_form() {
+    let daemon = Daemon::start("native-forms");
+    let (mut client, _) = Client::greet(&daemon);
+    daemon.ok(&["queue", "create", "builds"]);
+    let id: u64 = daemon
+        .ok(&["create", "--queue", "builds", "--", "true"])
+        .trim()
+        .parse()
+        .unwrap();
+    for (request, answered) in [
+        (json!({"Explain": {"id": id}}), "Explanation"),
+        (json!({"Attempts": {"id": id}}), "Attempts"),
+        (json!({"Pressure": {"id": null}}), "Pressure"),
+        (json!("PressureControl"), "PressureControl"),
+        (json!({"Config": {"reload": false}}), "Configuration"),
+        (
+            json!({"LogQuery": {"id": id, "attempt": null, "query": ["errors"]}}),
+            "",
+        ),
+        (
+            json!({"Extended": {"call": {"Settings": {"path": "builds", "key": null}}}}),
+            "Extended",
+        ),
+        (
+            json!({"Object": {"kind": "queue", "operation": {"Show": {"path": "builds"}}}}),
+            "Objects",
+        ),
+        (json!("Host"), "Host"),
+        (json!({"Attach": {"id": id}}), ""),
+    ] {
+        let answer = client.ok("native", json!({"request": request}));
+        let body = answer["answer"].as_object().unwrap();
+        println!("{request} -> {:?}", body.keys().collect::<Vec<_>>());
+        if !answered.is_empty() {
+            assert!(body.contains_key(answered), "{request}: {answer}");
+        }
+        assert!(
+            !body
+                .get("Error")
+                .and_then(|error| error["message"].as_str())
+                .is_some_and(|text| text.contains("unreadable")),
+            "{request}: {answer}"
+        );
+    }
+    for request in [
+        json!({"ResourceUpdateStatus": {"operation": "absent", "abandon": false}}),
+        json!({"ResourceUpdateStatus": {"operation": "absent"}}),
+    ] {
+        let status = client.ok("native", json!({"request": request}));
+        let said = status["answer"]["Error"]["message"].as_str().unwrap();
+        assert!(!said.contains("unreadable"), "{status}");
+    }
+    let abandon = client.ask(
+        "native",
+        json!({"request": {"ResourceUpdateStatus": {"operation": "absent", "abandon": true}}}),
+    );
+    sentence(&abandon);
+    assert!(abandon.get("ok").is_none(), "{abandon}");
+    let audit = daemon.ok(&["audit", "--json"]);
+    assert!(!audit.contains("update-abandon"), "{audit}");
+}
+
+#[test]
+fn client_interface_command_takes_the_terminal_size_and_binds_a_key_to_its_specification() {
+    let daemon = Daemon::start("terminal-size");
+    let (mut client, _) = Client::greet(&daemon);
+    for (more, size) in [
+        (
+            json!({"terminal": {"rows": 40, "cols": 132}}),
+            json!({"rows": 40, "cols": 132}),
+        ),
+        (json!({}), json!({"rows": 24, "cols": 80})),
+    ] {
+        let made = client.command(&daemon, &["create", "--pty", "--", "true"], more);
+        assert_eq!(made["exit_status"], 0, "{made}");
+        let id = made["data"]["id"].as_u64().unwrap();
+        let job = client.ok("job", json!({"id": id}));
+        assert_eq!(job["job"]["spec"]["declared"]["terminal"], size, "{job}");
+        assert_eq!(job["row"]["terminal"], true);
+    }
+    let plain = client.command(
+        &daemon,
+        &["create", "--", "true"],
+        json!({"terminal": {"rows": 40, "cols": 132}}),
+    );
+    let id = plain["data"]["id"].as_u64().unwrap();
+    let job = client.ok("job", json!({"id": id}));
+    assert_eq!(job["job"]["spec"]["declared"]["terminal"], Value::Null);
+    let keyed = ["submit", "--idempotency-key", "bound", "--"];
+    let first = client.command(&daemon, &[&keyed[..], &["true"]].concat(), json!({}));
+    assert_eq!(first["exit_status"], 0, "{first}");
+    let same = client.command(&daemon, &[&keyed[..], &["true"]].concat(), json!({}));
+    assert_eq!(same["data"]["id"], first["data"]["id"]);
+    let other = client.command(&daemon, &[&keyed[..], &["false"]].concat(), json!({}));
+    assert_eq!(other["outcome"], "done", "{other}");
+    assert_ne!(other["exit_status"], 0, "{other}");
+    assert_eq!(other["data"], Value::Null, "{other}");
+    assert!(!other["diagnostics"].as_array().unwrap().is_empty());
+    let listed = client.ok("jobs", json!({"ids_only": true}));
+    assert_eq!(listed["matching"]["total"], 4, "{listed}");
 }

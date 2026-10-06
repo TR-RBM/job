@@ -6,6 +6,7 @@ use std::time::{Duration, Instant};
 use serde_json::{Number, Value, json};
 
 use crate::daemon::Shared;
+use crate::streams::quota::{Retention, Total};
 use crate::streams::reader::{Batch, Kept, Reader};
 use crate::streams::{CHUNK, Mode, Record, Source};
 
@@ -146,49 +147,82 @@ struct Head {
     written: Value,
 }
 
-fn head(reader: &Reader, kept: &Kept, existing: Option<u64>) -> Head {
-    let unmeasured = |streams: &[&str]| -> Vec<Value> {
-        streams
-            .iter()
-            .map(|stream| {
-                json!({
-                    "stream": stream,
-                    "written_bytes": "not_measured",
-                    "kept_bytes": "not_measured",
-                })
-            })
-            .collect()
-    };
-    let retention = kept
-        .job
+fn expected(mode: Option<Mode>) -> &'static [Source] {
+    match mode {
+        Some(Mode::Pipe) => &[Source::Stdout, Source::Stderr],
+        Some(Mode::Pty) => &[Source::Terminal],
+        None => &[Source::Combined],
+    }
+}
+
+fn retained(kept: &Kept) -> Option<&Retention> {
+    kept.job
         .result
         .as_ref()
-        .and_then(|result| result.output_retention.as_ref());
-    let counted = kept
+        .and_then(|result| result.output_retention.as_ref())
+}
+
+fn counted(kept: &Kept, mode: Option<Mode>) -> Option<&[Total]> {
+    let handed = retained(kept)
+        .filter(|retention| !retention.streams.is_empty() || retention.trimmed_bytes.is_none())
+        .map(|retention| retention.streams.as_slice());
+    match &kept.meta {
+        Some(meta) if !meta.totals.is_empty() || meta.quota.is_some() => {
+            Some(meta.totals.as_slice())
+        }
+        Some(meta) => handed.or_else(|| {
+            (meta.complete
+                && meta.next_sequence == 0
+                && meta.retired_records == 0
+                && meta.omitted_bytes == 0
+                && meta.trimmed_bytes.is_none())
+            .then_some(&[][..])
+        }),
+        None => handed.filter(|streams| mode.is_some() || !streams.is_empty()),
+    }
+}
+
+fn head(reader: &Reader, kept: &Kept, existing: Option<u64>) -> Head {
+    let retention = retained(kept);
+    let trimmed = kept
         .meta
         .as_ref()
-        .map(|meta| meta.totals.as_slice())
-        .filter(|totals| !totals.is_empty())
-        .or_else(|| {
-            retention
-                .map(|retention| retention.streams.as_slice())
-                .filter(|totals| !totals.is_empty())
+        .is_some_and(|meta| meta.trimmed_bytes.is_some())
+        || retention.is_some_and(|retention| retention.trimmed_bytes.is_some());
+    let counts = counted(kept, reader.mode);
+    let streams = expected(reader.mode);
+    let entry = |stream: Source| {
+        let total = counts.map(|totals| {
+            totals
+                .iter()
+                .find(|total| total.stream == stream)
+                .map_or((0, 0), |total| (total.written_bytes, total.dropped_bytes))
         });
-    let totals: Vec<Value> = match (counted, reader.mode) {
-        (Some(totals), _) => totals
-            .iter()
-            .map(|total| {
-                json!({
-                    "stream": name(total.stream),
-                    "written_bytes": total.written_bytes,
-                    "kept_bytes": total.written_bytes.saturating_sub(total.dropped_bytes),
-                })
-            })
-            .collect(),
-        (None, Some(Mode::Pipe)) => unmeasured(&["stdout", "stderr"]),
-        (None, Some(Mode::Pty)) => unmeasured(&["terminal"]),
-        (None, None) => unmeasured(&["combined"]),
+        let (written, held) = match total {
+            Some((written, dropped)) => (
+                Value::from(written),
+                Value::from(written.saturating_sub(dropped)),
+            ),
+            None => (Value::from("not_measured"), Value::from("not_measured")),
+        };
+        json!({
+            "stream": name(stream),
+            "written_bytes": written,
+            "kept_bytes": if trimmed { Value::from(0) } else { held },
+        })
     };
+    let totals: Vec<Value> = streams
+        .iter()
+        .copied()
+        .chain(
+            counts
+                .unwrap_or_default()
+                .iter()
+                .map(|total| total.stream)
+                .filter(|stream| !streams.contains(stream)),
+        )
+        .map(entry)
+        .collect();
     let ended = kept.job.state.terminal();
     let (first, next, complete, quota, trimmed) = match (&kept.meta, kept.legacy) {
         (Some(meta), _) => (

@@ -75,7 +75,7 @@ fn reserved(source: &crate::resources::Source) -> Value {
     }
 }
 
-fn net(net: &Net) -> String {
+pub fn net(net: &Net) -> String {
     match net {
         Net::Host => "host".to_owned(),
         Net::None => "none".to_owned(),

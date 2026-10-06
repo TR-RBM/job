@@ -84,7 +84,7 @@ An answer carries `re` with that number and exactly one of `ok` and `error`:
 A pushed line carries `push` with its kind and no `re`:
 
 ```json
-{"push":"heartbeat","now_ms":1790000005000,"seq":4411}
+{"push":"heartbeat","sampled":true,"now_ms":1790000005000,"seq":4411}
 ```
 
 
@@ -92,7 +92,7 @@ Answers on one connection arrive in the order of their requests. Pushed lines ar
 
 Two requests answer with more than one line: `subscribe`, whose answer is followed by pushed lines until the connection ends, and `output`, whose answer is followed by lines that carry `re` and one of `record`, `gap`, `status` and `end`. Both are described below. Everything is lines; there is no binary framing in this interface.
 
-A connection carries at most one subscription. A `subscribe` on a connection that has one, and an `output` request on such a connection, are refused with an error; the subscription stays. After a `resync` the connection has no subscription and `subscribe` is accepted again.
+A connection carries at most one subscription. A `subscribe` on a connection that has one, and an `output` request on such a connection, are refused with an error; the subscription stays. Two things end a subscription: a `resync`, after which the connection has none and `subscribe` is accepted on it again, and the end of the connection. There is no request that ends one, so a client that wants to start over without having been told `resync` closes the connection and opens a new one.
 
 ## Versions
 
@@ -107,7 +107,7 @@ What does not raise it: a new request, a new field in an answer or a pushed line
 So a client must:
 
 - ignore members it does not know in any object the service sends;
-- ignore a pushed line whose `push` it does not know, after taking its `seq` into account where it has one;
+- ignore a pushed line whose `push` it does not know, after reading two of its members. A line that has `seq` and no `sampled` is a sequenced change with a number of its own, one above the sequenced line before it, and the client counts it as it counts the kinds it knows, so that the line after it is not taken for a hole. A line with `sampled` true is not counted: its `seq`, where it has one, is the last number assigned and belongs to no line. See Sequenced changes and Sampled lines. A service built before `sampled` existed puts it on no line; the only sampled lines of such a service are the four kinds named in this document, which a client knows by their kind;
 - learn whether a request exists from the list of capabilities, never from the version of job.
 
 A capability is a short name. The capabilities of this set are the names of its described requests, `subscribe`, `interest`, `jobs`, `job`, `tree`, `totals`, `processes`, `output`, `commands` and `command`, and three more:
@@ -185,7 +185,7 @@ A measured value is never replaced by zero. Where a number may be missing, the f
 | Word | Meaning |
 |---|---|
 | `"unknown"` | the service should know this and does not: a file could not be read, or no sample has been taken yet |
-| `"not_measured"` | the service does not measure this in the way it runs, for example CPU time without a cgroup |
+| `"not_measured"` | the service holds no measurement of this. Mostly that is for good, because it does not measure the value in the way it runs, for example CPU time without a cgroup. In one place it is for now: the output totals of a running Job without a quota, which the service is handed when the Job ends. A description says which of the two it is where the word can occur. |
 | `"not_applicable"` | the value has no meaning for this object, for example the init process of a Job that has no PID namespace |
 
 A limit is a number or the word `"unlimited"`.
@@ -274,7 +274,7 @@ The answer:
 
 ```json
 {"id":3,"op":"jobs","args":{"order":"activity","filter":{"states":["running","queued"],"subtree":"builds"},"limit":2}}
-{"re":3,"ok":{"seq":4410,"now_ms":1790000001200,"order":"activity","matching":{"total":37,"counts":{"running":4,"queued":33},"ended_not_searched":0},"offset":0,"rows":[{"id":812,"revision":9,"attempt":1,"state":"running","queue":"builds/linux","queue_id":7,"actor_uid":1000,"actor_pid":30112,"session":"ci","labels":{"branch":"main"},"argv":["cargo","build","--release"],"argv_truncated":false,"priority":50,"priority_source":{"from":"job"},"idempotency_key":null,"submitted_ms":1789999900000,"waiting_since_ms":1789999900000,"admitted_ms":1789999900400,"started_ms":1789999900450,"finished_ms":null,"suspended":{"total_ms":0,"since_ms":null},"wall_limit_ms":3600000,"termination_deadline_ms":null,"predicted_start_ms":null,"waited_for":null,"reserved":{"cores_milli":4000,"memory":8589934592,"pids":512},"memory_max":8589934592,"stop_kind":null,"exit_code":null,"signal":null,"start_error":null,"usage":null,"network":"host","terminal":false,"on":null,"cgroup":"/sys/fs/cgroup/user.slice/job/jobs/812","confirmed":{"namespaces":[],"pid_namespace":false,"no_new_privs":false,"cap_drop":null,"seccomp_denied":0,"cpu_affinity":null}},{"id":815,"revision":2,"attempt":1,"state":"queued","queue":"builds/linux","queue_id":7,"actor_uid":1000,"actor_pid":30190,"session":"ci","labels":{},"argv":["make","check"],"argv_truncated":false,"priority":null,"priority_source":null,"idempotency_key":null,"submitted_ms":1789999950000,"waiting_since_ms":1789999950000,"admitted_ms":null,"started_ms":null,"finished_ms":null,"suspended":{"total_ms":0,"since_ms":null},"wall_limit_ms":null,"termination_deadline_ms":null,"predicted_start_ms":1790000400000,"waited_for":"waiting for resources or an unknown running-job end","reserved":{"cores_milli":2000,"memory":2147483648,"pids":256},"memory_max":"not_applicable","stop_kind":null,"exit_code":null,"signal":null,"start_error":null,"usage":null,"network":null,"terminal":false,"on":null,"cgroup":null,"confirmed":"not_applicable"}],"before":null,"after":"djE6YWN0aXZpdHk6..."}}
+{"re":3,"ok":{"seq":4410,"now_ms":1790000001200,"order":"activity","matching":{"total":37,"counts":{"running":4,"queued":33},"ended_not_searched":0},"offset":0,"rows":[{"id":812,"revision":9,"attempt":1,"state":"running","queue":"builds/linux","queue_id":7,"actor_uid":1000,"actor_pid":30112,"session":"ci","labels":{"branch":"main"},"argv":["cargo","build","--release"],"argv_truncated":false,"priority":50,"priority_source":{"from":"job"},"idempotency_key":null,"submitted_ms":1789999900000,"waiting_since_ms":1789999900000,"admitted_ms":1789999900400,"started_ms":1789999900450,"finished_ms":null,"suspended":{"total_ms":0,"since_ms":null},"wall_limit_ms":3600000,"termination_deadline_ms":null,"predicted_start_ms":null,"waited_for":null,"reserved":{"cores_milli":4000,"memory":8589934592,"pids":512},"memory_max":8589934592,"stop_kind":null,"exit_code":null,"signal":null,"start_error":null,"usage":null,"network":"host","terminal":false,"on":null,"cgroup":"/sys/fs/cgroup/user.slice/job/jobs/812","confirmed":{"namespaces":[],"pid_namespace":false,"no_new_privs":false,"cap_drop":null,"seccomp_denied":0,"cpu_affinity":null}},{"id":815,"revision":2,"attempt":1,"state":"queued","queue":"builds/linux","queue_id":7,"actor_uid":1000,"actor_pid":30190,"session":"ci","labels":{},"argv":["make","check"],"argv_truncated":false,"priority":null,"priority_source":null,"idempotency_key":null,"submitted_ms":1789999950000,"waiting_since_ms":1789999950000,"admitted_ms":null,"started_ms":null,"finished_ms":null,"suspended":{"total_ms":0,"since_ms":null},"wall_limit_ms":null,"termination_deadline_ms":null,"predicted_start_ms":1790000400000,"waited_for":"waiting for resources or an unknown running-job end","reserved":{"cores_milli":2000,"memory":2147483648,"pids":256},"memory_max":"not_applicable","stop_kind":null,"exit_code":null,"signal":null,"start_error":null,"usage":null,"network":"host","terminal":false,"on":null,"cgroup":null,"confirmed":"not_applicable"}],"before":null,"after":"djE6YWN0aXZpdHk6..."}}
 ```
 
 | Field | Type | Meaning |
@@ -336,7 +336,7 @@ The row. Every field is always present.
 | `suspended.total_ms` | number | `suspension.total_ms` | length of time spent suspended in finished suspensions |
 | `suspended.since_ms` | number or null | `suspension.since_ms` | start of the suspension in force; null when not suspended |
 | `wall_limit_ms` | number or null | `reservation.wall_limit_ms` | length of the time limit; null when there is none |
-| `termination_deadline_ms` | number or null | `termination_deadline_ms` | when a stopping Job is killed; null otherwise |
+| `termination_deadline_ms` | number or null | `termination_deadline_ms`, for a Job that has not ended | when a Job that is being stopped is killed. Null while no stop is under way, and null for every Job that has ended, whatever its record still holds. |
 | `predicted_start_ms` | number or null | `predicted_start_ms` of the listing entry | null when the service has no prediction. It is current in the rows of `jobs`, of `job` and of the snapshot's page, and always null in the row of a pushed `job` line: a subscriber learns predictions only by asking for the page of queued rows again, see Sequenced changes. |
 | `waited_for` | string or null | `waited_for` | the service's sentence about what the Job waits for. It is current in the rows of `jobs`, of `job` and of the snapshot's page; in the row of a pushed `job` line it is what the service held at that save. It reaches a subscriber between saves only by asking for the page again. |
 | `reserved` | object | `reservation.vector` | `cores_milli`, `memory` in bytes, `pids` |
@@ -345,7 +345,7 @@ The row. Every field is always present.
 | `exit_code`, `signal` | number or null | `exit_code`, `signal` | null when there is none |
 | `start_error` | string or null | `start_error` | why the command did not start |
 | `usage` | object or null | `usage` | for an ended Job: `peak_memory`, `peak_pids`, `written`, `cpu_ms`, `throttled_ms`. The last two are `"not_measured"` for a Job that ran without a cgroup. Null for a Job that has not ended. |
-| `network` | string or null | `network.selected` | the network the Job was given; null before it is resolved |
+| `network` | string or null | `network.selected`, else `spec.declared.net` | the network of the Job, as the word a person writes for `--net`: `host`, `none`, `ns:NAME`, `profile:NAME`, `wireguard:FILE`, `openvpn:FILE`, or the address of a proxy with its credentials replaced by a mark. It is there from submission on: the service settles it then, from the Job's own option, else the Queue's setting, else `host`. Null only for a Job whose record names no network: a Job on a remote target for which none was asked, and a record saved by a release that did not yet write the word. |
 | `terminal` | boolean | whether `spec.declared.terminal` is set | the Job has a terminal that can be attached to |
 | `on` | string or null | `spec.declared.on.target` | the remote target the Job runs on; null for a Job on the service's host |
 | `cgroup` | string or null | `workload_cgroup` | the cgroup of the Job; null when it has none |
@@ -420,7 +420,7 @@ The Job record is the record job keeps, with every enumerated value and every so
 | `workload_cgroup` | string or null | the cgroup path of the Job; null without a cgroup |
 | `shim_pid` | number or null | the process ID of the supervisor; null before it is started |
 | `shim_start_ticks`, `supervisor_boot_id` | number or null, string or null | which process and which boot that ID belongs to |
-| `termination_deadline_ms` | number or null | when a stopping Job is killed |
+| `termination_deadline_ms` | number or null | when a stopping Job is killed. The record of a Job that has ended can still hold the deadline of its last stop; the row shows null for it. |
 | `waited_for` | string or null | what a waiting Job waits for |
 | `stop` | object or null | `kind` and `line`, when the service stopped the Job |
 | `result` | object or null | at the end: `exit_code`, `signal`, `start_error`, `finished_ms`, `usage`, `oom_kill`, `oom_group_kill`, `pids_max_events`, `leftover_processes`, `leftover_names`, `kept_helpers`, `output_bytes`, `output_error`, `output_held_open`, `output_retention`, `isolation_controls`, `security_controls`, `process_controls`, `notes`, `remote`, `remote_lines`, `monitor`, `windows` |
@@ -456,7 +456,7 @@ Every Queue and Group, with depth and use.
 | `effective` | object | `effective`, with `source_id` and `source_path` as one source | setting name to `value` and `source`: the value in force here and where it comes from |
 | `aggregate_domains` | array | the same | the shared ceilings that apply here: `object_id`, `object_path`, `limits` |
 | `paused_by`, `closed_by` | array of strings | the same | paths of the objects whose pause or close holds here; empty when none |
-| `depth` | object | the same | Jobs at or below this object per state (`held`, `queued`, `starting`, `running`, `suspended`, `stopping`); `oldest_queued_age_ms`, a length of time valid at `now_ms`, null when nothing is queued; `started_last_hour` with `window_ms`, `sample_limit`, `count`, `median_ms`, `max_ms` |
+| `depth` | object | the same | Jobs at or below this object per state (`held`, `queued`, `starting`, `running`, `suspended`, `stopping`); `oldest_queued_age_ms`, a number or null: a length of time valid at `now_ms`, null when nothing is queued; `started_last_hour`, the waits of the Jobs at or below this object that started within the window: `window_ms` (number, the length of the window), `sample_limit` (number, the most starts that are kept for it), `count` (number of starts counted), and `median_ms` and `max_ms` (number or null), the median and the longest time such a Job waited before it started, as lengths of time, both null when `count` is 0 |
 | `depth.oldest_queued_since_ms` | number or null | new | since when the oldest queued Job has waited; null when nothing is queued |
 | `use` | object | new | see below |
 
@@ -557,8 +557,17 @@ The answer:
 | `quota` | object or null | the same | `head_bytes` and `tail_bytes` kept per stream; null when the built-in window applies |
 | `trimmed_bytes` | number or null | the same | bytes removed because the service's budget for recordings was exceeded; null when none |
 | `totals[].stream` | string | the same | the stream |
-| `totals[].written_bytes` | number or `"not_measured"` | `written_bytes` | bytes the Job wrote to it |
-| `totals[].kept_bytes` | number or `"not_measured"` | `written_bytes` less `dropped_bytes` | bytes of it still recorded. Both are numbers for a Job that has ended, and for a running Job whose output has a quota (`quota` is not null). Both are `not_measured` for a running Job without a quota: the supervisor counts per stream in its own memory and gives the service the counts only when the Job ends, so the lines of such a Job are returned while its totals are not yet known. They are also `not_measured` for a recording that was made without counts per stream. A stream the Job never wrote to has no entry once the counts are known. |
+| `totals[].written_bytes` | number or `"not_measured"` | `written_bytes` | bytes the Job wrote to it; see Totals below for when it is a number |
+| `totals[].kept_bytes` | number or `"not_measured"` | `written_bytes` less `dropped_bytes` | bytes of it still recorded; see Totals below |
+
+Totals. `totals` holds one entry for each stream of the recording's mode, in this order: `stdout` and `stderr` for `pipe`, `terminal` for `pty`, `combined` when `mode` is null. After them comes one entry for every other stream something was written to, such as `diagnostic`. Whether `written_bytes` and `kept_bytes` are numbers depends on whether the service holds the counts of that attempt:
+
+- A running Job whose output has a quota (`quota` is not null): numbers, current when the request arrives.
+- A running Job without a quota: both are `not_measured`. The supervisor counts per stream in its own memory and hands the counts to the service when the Job ends, so the lines of such a Job are returned while its totals are not yet known. This is the one `not_measured` that does not last: the same request answers numbers once the Job has ended.
+- An attempt that has ended: numbers, when the supervisor handed over its counts, as it does for every attempt whose end it sees. Also numbers, all 0, when the recording is closed and holds no record at all, whoever made it.
+- An attempt that has ended and whose recording holds records without counts per stream: `not_measured`, for good. That is a recording from before streams were recorded apart (`mode` is null, which is what a state directory taken over from an earlier release holds), and one whose supervisor ended without handing over its result.
+
+Where the counts are known, a stream of the mode that the Job never wrote to has an entry with 0 in both fields; it is not left out. `kept_bytes` is 0 for every entry of a recording the output budget trimmed (`trimmed_bytes` is not null), because trimming removes the recording as a whole; `written_bytes` is not changed by trimming.
 
 After the answer:
 
@@ -733,19 +742,21 @@ Every use of `native` is temporary. Each internal request below is to be replace
 
 The internal requests a client is expected to pass through it in this set. This is the list of what remains to be described.
 
-| Internal request | For |
-|---|---|
-| `Explain` | why a waiting Job waits, its predicted start, priority, bounds and aging |
-| `Attempts` | the earlier attempts of a Job |
-| `Pressure` | pressure of the host or of one Job |
-| `PressureControl` | the pressure rules and their state |
-| `Config` with `reload` false | the configuration in force, with profiles and classes |
-| `LogQuery` | job's extraction of errors and lines from recorded output |
-| `Extended` with `Settings` | the settings of a Queue or Group: configured, effective, from where |
-| `Object` with `Show` | one Queue or Group |
-| `Host` | what the host offers: kernel, controllers, security, isolation and process controls, I/O devices, surrounding limits, the service's paths; and under `info.network` the configured network namespaces and routing profiles, which is what `net list` and `net show NAME` print. `info.network` is absent when the service's configuration names none. |
-| `ResourceUpdateStatus` | the steps of a resource update |
-| `Attach` | the path of a Job's terminal socket |
+| Internal request | `request`, as the service of protocol 20 accepts it | Changes anything | For |
+|---|---|---|---|
+| `Explain` | `{"Explain":{"id":815}}` | no | why a waiting Job waits, its predicted start, priority, bounds and aging |
+| `Attempts` | `{"Attempts":{"id":790}}` | no | the earlier attempts of a Job |
+| `Pressure` | `{"Pressure":{"id":null}}` for the host, `{"Pressure":{"id":812}}` for one Job | no | pressure of the host or of one Job |
+| `PressureControl` | `"PressureControl"`, a string and not an object | no | the pressure rules and their state |
+| `Config` | `{"Config":{"reload":false}}` | no. With `reload` true it is a change and is refused. | the configuration in force, with profiles and classes |
+| `LogQuery` | `{"LogQuery":{"id":790,"attempt":null,"query":["errors"]}}`. `attempt` null or left out is the current attempt. `query` holds the words that follow the Job ID of `job log` on a command line, without `--attempt N`. | no | job's extraction of errors and lines from recorded output |
+| `Extended` with `Settings` | `{"Extended":{"call":{"Settings":{"path":"builds","key":null}}}}`. `key` is the name of one setting, or null for all. | no | the settings of a Queue or Group: configured, effective, from where |
+| `Object` with `Show` | `{"Object":{"kind":"queue","operation":{"Show":{"path":"builds/linux"}}}}`. `kind` is `queue` or `group`. | no | one Queue or Group |
+| `Host` | `"Host"`, a string and not an object | no | what the host offers: kernel, controllers, security, isolation and process controls, I/O devices, surrounding limits, the service's paths; and under `info.network` the configured network namespaces and routing profiles, which is what `net list` and `net show NAME` print. `info.network` is absent when the service's configuration names none. |
+| `ResourceUpdateStatus` | `{"ResourceUpdateStatus":{"operation":"NAME","abandon":false}}`, with the name of the operation that the resource update answered | no, with `abandon` false or left out. With `abandon` true it gives the update up, which is a change, and is refused. | the steps of a resource update |
+| `Attach` | `{"Attach":{"id":812}}` | It changes no Job, Queue or Group, and it is not a plain read: the service records it in the audit journal as `attach`, and the answer is the path of the socket through which the Job's terminal is read and written. | the path of a Job's terminal socket |
+
+A request that the internal protocol writes without members is a JSON string, as `"Host"` is; one with members is an object with the request's name as its single member. The service decides what is a change with the rule it uses for its audit journal, on the request as it was sent: `Config` and `ResourceUpdateStatus` are reads or changes by the member shown above.
 
 `native` carries reading requests and `Attach`, and nothing else. Changing requests are not on this list, because `command` carries every action. A changing request sent through `native` is answered with an `error` of this interface. It is not recorded in the audit journal, because nothing was attempted. A reading request that is not on the list is carried on the same terms as the listed ones; a client has no reason to send one.
 
@@ -832,20 +843,23 @@ What a client does with them:
 - A row carries `queue_id`. When an `object` line changes the path of a Queue, the service sends no `job` line for the Jobs in it; a client that shows the path takes it from the tree.
 - `predicted_start_ms` and `waited_for` change with every pass of admission, for every waiting Job. They do not cause a `job` line, and a `job` line does not carry the prediction: its row has `predicted_start_ms` null and the `waited_for` of that save. A client keeps the prediction it holds for a row when a `job` line for that row arrives while the Job stays `queued`, and drops it when the state changes. Both are current in every answer of `jobs` and `job` and in the snapshot's page, and that is the only way they reach a subscriber: a client that shows them asks again for the page of queued rows it shows, not more often than every `limits.poll_ms`.
 - An answer of `jobs`, `job`, `tree` and `totals` carries the `seq` it is valid at. A sequenced line with a higher `seq` is newer than the answer; one with the same or a lower `seq` is already in it.
-- A client that sees a `seq` that is not one above the last treats it as a `resync`.
+- A client counts every line that has `seq` and no `sampled`, whether it knows the kind or not. Each such line has a number of its own, one above the one before.
+- The service leaves no hole, so a client that reads a sequenced line whose `seq` is not one above the last has met a fault, in the service or in its own reading. No `resync` was said, so the subscription of that connection stands and a `subscribe` on it is refused. The client closes the connection, treats what it took from the subscription as stale as it does after a `resync`, connects again and sends `subscribe` without `after`. The service counts the subscription of the closed connection until it has noticed the close, a moment later; a client at the limit of `subscriptions` that is refused then asks again.
 
 ### Sampled lines
 
-These carry values the service samples. They have no sequence number of their own, are sent at most once a second each, are never kept for a later continuation, and can be dropped by the service under load without notice; the next one carries the current values.
+These carry values the service samples. Each carries `sampled` true, which is how a client tells a sampled line from a sequenced one without knowing its kind; the heartbeat carries it as well. They have no sequence number of their own, are sent at most once a second each, are never kept for a later continuation, and can be dropped by the service under load without notice; the next one carries the current values.
+
+`totals` and `heartbeat` carry `seq`. It is the last sequence number the service had assigned when it wrote the line, and not a number of that line: two of them can carry the same number, and the number can be ahead of the last sequenced line the client has read, by changes that are still to arrive on the connection. A client does not count it and does not compare it with the last number it applied to look for a hole.
 
 | `push` | Fields | Content |
 |---|---|---|
-| `totals` | `now_ms`, `seq`, `counts`, `capacity` | as in `totals`; sent when a count or a capacity figure changed. `seq` is the last sequence number assigned. |
-| `use` | `at_ms`, `objects` | `objects` is an array of `id`, `depth` and `use` as in `tree`, for the Queues and Groups of which a count in `depth` or a figure in `use` changed. `oldest_queued_age_ms` and the `at_ms` of counters change with the clock alone and do not count as a change. |
-| `live` | `at_ms`, `jobs` | see Live use |
+| `totals` | `sampled`, `now_ms`, `seq`, `counts`, `capacity` | as in `totals`; sent when a count or a capacity figure changed. `seq` is the last sequence number assigned. |
+| `use` | `sampled`, `at_ms`, `objects` | `objects` is an array of `id`, `depth` and `use` as in `tree`, for the Queues and Groups of which a count in `depth` or a figure in `use` changed. `oldest_queued_age_ms` is valid at the line's `at_ms`, since the line has no `now_ms`. It and the `at_ms` of counters change with the clock alone and do not count as a change. |
+| `live` | `sampled`, `at_ms`, `jobs` | see Live use |
 
 ```json
-{"push":"totals","now_ms":1790000003000,"seq":4413,"counts":{"held":0,"queued":32,"starting":0,"running":5,"suspended":0,"stopping":0,"succeeded":10377,"failed":22,"cancelled":5,"lost":0},"capacity":{"pool":{"cores_milli":24000,"memory":50465865728,"pids":16384},"reserved":{"cores_milli":18000,"memory":27917287424,"pids":2304},"running":5,"waiting":32,"memory_total":67430813696,"memory_available":40001189312,"output":{"recorded_bytes":734103200,"budget_bytes":1073741824},"state_free_bytes":211106132532}}
+{"push":"totals","sampled":true,"now_ms":1790000003000,"seq":4413,"counts":{"held":0,"queued":32,"starting":0,"running":5,"suspended":0,"stopping":0,"succeeded":10377,"failed":22,"cancelled":5,"lost":0},"capacity":{"pool":{"cores_milli":24000,"memory":50465865728,"pids":16384},"reserved":{"cores_milli":18000,"memory":27917287424,"pids":2304},"running":5,"waiting":32,"memory_total":67430813696,"memory_available":40001189312,"output":{"recorded_bytes":734103200,"budget_bytes":1073741824},"state_free_bytes":211106132532}}
 ```
 
 ### Heartbeat
@@ -853,10 +867,10 @@ These carry values the service samples. They have no sequence number of their ow
 When the service has sent nothing on a subscription for `limits.heartbeat_ms`, 5000 in this version, it sends:
 
 ```json
-{"push":"heartbeat","now_ms":1790000008000,"seq":4413}
+{"push":"heartbeat","sampled":true,"now_ms":1790000008000,"seq":4413}
 ```
 
-`seq` is the last sequence number assigned. A client that has read no line for three times that interval takes the connection for dead, closes it and connects again. `capacity.memory_available` and `capacity.state_free_bytes` move on most hosts from one second to the next, so a `totals` line is sent about once a second there and a heartbeat is rare; a client does not wait for one.
+`seq` is the last sequence number assigned, as in `totals`. A client that has read no line for three times that interval takes the connection for dead, closes it and connects again. `capacity.memory_available` and `capacity.state_free_bytes` move on most hosts from one second to the next, so a `totals` line is sent about once a second there and a heartbeat is rare; a client does not wait for one.
 
 ### Health
 
@@ -885,7 +899,7 @@ Uptime is the service's clock less `started_ms`. Counts per state and free space
 On `resync` a client must:
 
 1. stop applying changes, and treat everything it took from this subscription as stale: rows, tree, totals, health and live figures;
-2. send `subscribe` again without `after` on the same connection, or on a new one;
+2. send `subscribe` again without `after`. After a `resync`, pushed or as an answer, the connection has no subscription, so the same connection takes the request; a new connection does as well;
 3. replace what it held with the snapshot, and ask again for the pages it shows.
 
 It must not go on as if nothing had happened, and it must not send `after`.
@@ -912,7 +926,7 @@ Live figures are sent only for the Jobs in the interest set of a subscription.
 Once a second the service sends one line with the Jobs of the set whose figures changed since it last sent them to this subscriber:
 
 ```json
-{"push":"live","at_ms":1790000002000,"jobs":[{"id":812,"attempt":1,"cpu_at_ms":1790000002000,"memory":735051776,"peak_memory":912261120,"pids":43,"peak_pids":58,"written":10485760,"cpu_ms":385100,"throttled_ms":0,"oom_kill":0,"oom_group_kill":0,"pids_max_events":0}]}
+{"push":"live","sampled":true,"at_ms":1790000002000,"jobs":[{"id":812,"attempt":1,"cpu_at_ms":1790000002000,"memory":735051776,"peak_memory":912261120,"pids":43,"peak_pids":58,"written":10485760,"cpu_ms":385100,"throttled_ms":0,"oom_kill":0,"oom_group_kill":0,"pids_max_events":0}]}
 ```
 
 | Field | Type | From | Meaning |
@@ -935,7 +949,7 @@ Guarantees and their limits:
 - At most one entry per Job per second.
 - A Job that enters the set gets an entry with the next line after its first sample, whether or not anything changed. Until then a client has no figure for it and shows none; it does not show a figure it remembers from before.
 - When a Job leaves the set, or ends, no further entry comes. The final figures of an ended Job are in `usage` of its row.
-- The service reads the figures of the Jobs in some interest set once a second, while at least one subscription exists, and of no other Job. `cpu_at_ms` says when the CPU figures of an entry were read; it is at most a second old.
+- The service reads the figures of the Jobs in some interest set once a second, while at least one subscription exists, and of no other Job: a Job outside every interest set is not sampled at all. Its figures are read when a client asks for them with `job`. `cpu_at_ms` says when the CPU figures of an entry were read; it is at most a second old.
 - The rate of CPU use is the difference of two `cpu_ms` divided by the difference of their `cpu_at_ms`. A client computes it, and only from two entries; the service sends no rate.
 - Without the capability `cgroup`, `memory` is the resident memory of the Job's processes, `pids` their threads, `written` what they wrote, and the four cgroup counters are `not_measured`.
 - Any figure is `"unknown"` in an entry when its file could not be read for that sample.

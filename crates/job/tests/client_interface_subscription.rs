@@ -832,8 +832,9 @@ fn subscription_is_never_silent_longer_than_the_heartbeat() {
         assert!(["totals", "use", "heartbeat"].contains(&kind), "{line}");
         if kind == "heartbeat" {
             println!("heartbeat {line}");
-            assert_eq!(line.as_object().unwrap().len(), 3, "{line}");
+            assert_eq!(line.as_object().unwrap().len(), 4, "{line}");
         }
+        assert_eq!(line["sampled"], true, "{line}");
         if kind != "use" {
             assert_eq!(line["seq"], snapshot["seq"], "{line}");
             clocks.push(line["now_ms"].as_u64().unwrap());
@@ -943,4 +944,81 @@ fn subscription_and_listings_on_another_connection_agree_by_sequence_number() {
     assert_eq!(page["seq"], end);
     let listed: Vec<Value> = page["rows"].as_array().unwrap().clone();
     assert_eq!(listed, rows.values().cloned().collect::<Vec<Value>>());
+}
+
+#[test]
+fn subscription_filters_its_first_page_marks_sampled_lines_and_pushes_health() {
+    let daemon = Daemon::start("marks");
+    let (mut actor, _) = Client::greet(&daemon);
+    let running = actor.submit(&daemon, &[], &["sleep", "40"]);
+    actor.until(running, &["running"]);
+    let held = actor.command(&daemon, &["create", "--", "true"])["data"]["id"]
+        .as_u64()
+        .unwrap();
+    let (mut watcher, _) = Client::greet(&daemon);
+    let snapshot = watcher.snapshot(json!({
+        "rows": {"order": "id", "limit": 1, "filter": {"states": ["held", "running"]}},
+        "interest": [running],
+    }));
+    let seq = snapshot["seq"].as_u64().unwrap();
+    assert_eq!(snapshot["interest"], 1);
+    assert_eq!(snapshot["page"]["order"], "id");
+    assert_eq!(snapshot["page"]["matching"]["total"], 2);
+    assert_eq!(snapshot["page"]["rows"].as_array().unwrap().len(), 1);
+    assert_eq!(snapshot["page"]["rows"][0]["id"], running);
+    assert_eq!(snapshot["page"]["offset"], 0);
+    assert!(snapshot["page"]["after"].is_string());
+    assert_eq!(snapshot["health"]["unreadable_records"], json!([]));
+    let next = actor.ok(
+        "jobs",
+        json!({
+            "order": "id", "limit": 1, "cursor": snapshot["page"]["after"],
+            "filter": {"states": ["held", "running"]},
+        }),
+    );
+    assert_eq!(next["rows"][0]["id"], held);
+    std::fs::write(
+        daemon.state.join(format!("jobs/{held}/job.json")),
+        "{ not a record",
+    )
+    .unwrap();
+    let ending = actor.submit(&daemon, &[], &["true"]);
+    let mut kinds: BTreeMap<String, Value> = BTreeMap::new();
+    let mut last = seq;
+    let deadline = Instant::now() + Duration::from_secs(60);
+    while !["totals", "use", "live", "job", "health"]
+        .iter()
+        .all(|kind| kinds.contains_key(*kind))
+    {
+        assert!(Instant::now() < deadline, "{:?}", kinds.keys());
+        let line = watcher.pushed();
+        let kind = line["push"].as_str().unwrap().to_owned();
+        if sequenced(&line) {
+            assert!(line.get("sampled").is_none(), "{line}");
+            assert_eq!(line["seq"], last + 1, "{line}");
+            last += 1;
+        } else {
+            assert_eq!(line["sampled"], true, "{line}");
+            if let Some(carried) = line.get("seq") {
+                assert!(carried.as_u64().unwrap() >= last, "{line}");
+            }
+        }
+        kinds.insert(kind, line);
+    }
+    assert_eq!(
+        kinds["health"]["health"]["unreadable_records"],
+        json!([held])
+    );
+    assert!(kinds["use"].get("seq").is_none());
+    assert!(kinds["live"].get("seq").is_none());
+    actor.until(ending, &ENDED);
+    let totals = actor.ok("totals", json!({}))["seq"].as_u64().unwrap();
+    assert!(totals >= last);
+    for (op, args) in [
+        ("tree", json!({})),
+        ("jobs", json!({"limit": 0})),
+        ("job", json!({"id": running})),
+    ] {
+        assert_eq!(actor.ok(op, args)["seq"], totals, "{op}");
+    }
 }

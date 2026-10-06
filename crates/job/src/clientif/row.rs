@@ -136,7 +136,9 @@ impl Row {
             suspended_total_ms: job.suspension.total_ms,
             suspended_since_ms: job.suspension.since_ms,
             wall_limit_ms: job.reservation.wall_limit_ms,
-            termination_deadline_ms: job.termination_deadline_ms,
+            termination_deadline_ms: job
+                .termination_deadline_ms
+                .filter(|_| !job.state.terminal()),
             predicted_start_ms: predicted,
             waited_for: job.waited_for.clone(),
             reserved: [
@@ -150,7 +152,11 @@ impl Row {
             signal: result.and_then(|result| result.signal),
             start_error: result.and_then(|result| result.start_error.clone()),
             usage: usage(job),
-            network: job.network.as_ref().map(|network| network.selected.clone()),
+            network: job
+                .network
+                .as_ref()
+                .map(|network| network.selected.clone())
+                .or_else(|| job.spec.declared.net.as_ref().map(spell::net)),
             terminal: job.spec.declared.terminal.is_some(),
             on: job
                 .spec

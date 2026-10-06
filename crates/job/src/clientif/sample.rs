@@ -114,9 +114,8 @@ pub fn used(node: &Value) -> (u64, String, String) {
 }
 
 fn pass(shared: &Shared, wanted: &BTreeSet<u64>) -> Board {
-    let now = crate::shim::now_ms();
+    let (nodes, now, _) = tree::nodes(shared);
     let (held, ended, _) = totals::held(shared);
-    let (nodes, _, _) = tree::nodes(shared);
     let subjects = client_service::subjects(shared, wanted);
     changes::health(&totals::health(&held));
     let mut table = None;

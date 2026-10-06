@@ -1688,3 +1688,91 @@ fn listings_output_of_a_terminal_job_is_the_stream_terminal() {
     let (_, whole) = client.output(json!({"id": id}));
     assert_eq!(data(&whole, None), data(&lines, Some("terminal")));
 }
+
+#[test]
+fn listings_row_names_the_network_drops_an_old_deadline_and_counts_silent_streams() {
+    let mut daemon = Daemon::start("honest");
+    let (mut client, _) = Client::greet(&daemon);
+    let silent = client.submit(&daemon, &[], &["true"]);
+    let half = client.submit(&daemon, &[], &["bash", "-c", "printf abc"]);
+    let stopped = client.submit(&daemon, &[], &["sleep", "60"]);
+    let held = client.command(&daemon, &["create", "--net", "none", "--", "true"])["data"]["id"]
+        .as_u64()
+        .unwrap();
+    client.until(silent, &ENDED);
+    client.until(half, &ENDED);
+    client.until(stopped, &["running"]);
+    let rows = client.ok("jobs", json!({"order": "id"}))["rows"].clone();
+    for row in rows.as_array().unwrap() {
+        let network = if row["id"] == held { "none" } else { "host" };
+        assert_eq!(row["network"], network, "{row}");
+        assert_eq!(row["termination_deadline_ms"], Value::Null, "{row}");
+    }
+    assert_eq!(rows.as_array().unwrap().len(), 4);
+    client.command(&daemon, &["cancel", &stopped.to_string()]);
+    client.until(stopped, &["cancelled"]);
+    let (head, _) = client.output(json!({"id": silent}));
+    assert_eq!(head["first_sequence"], Value::Null);
+    assert_eq!(head["next_sequence"], 0);
+    assert_eq!(head["complete"], true);
+    assert_eq!(
+        head["totals"],
+        json!([
+            {"stream": "stdout", "written_bytes": 0, "kept_bytes": 0},
+            {"stream": "stderr", "written_bytes": 0, "kept_bytes": 0},
+        ])
+    );
+    let (head, _) = client.output(json!({"id": half}));
+    assert_eq!(
+        head["totals"],
+        json!([
+            {"stream": "stdout", "written_bytes": 3, "kept_bytes": 3},
+            {"stream": "stderr", "written_bytes": 0, "kept_bytes": 0},
+        ])
+    );
+    drop(client);
+    daemon.stop();
+    let path = daemon.state.join(format!("jobs/{stopped}/job.json"));
+    let mut record: Value = serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+    record["termination_deadline_ms"] = json!(1_790_000_000_000u64);
+    std::fs::write(&path, serde_json::to_vec(&record).unwrap()).unwrap();
+    let path = daemon.state.join(format!("jobs/{silent}/job.json"));
+    let mut record: Value = serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+    record["result"]["output_retention"] = Value::Null;
+    std::fs::write(&path, serde_json::to_vec(&record).unwrap()).unwrap();
+    let path = daemon.state.join(format!("jobs/{half}/job.json"));
+    let mut record: Value = serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+    record["result"]["output_retention"] = Value::Null;
+    std::fs::write(&path, serde_json::to_vec(&record).unwrap()).unwrap();
+    daemon.restart();
+    let (mut client, _) = Client::greet(&daemon);
+    let answer = client.ok("job", json!({"id": stopped}));
+    assert_eq!(answer["row"]["state"], "cancelled");
+    assert_eq!(answer["row"]["stop_kind"], "cancelled");
+    assert_eq!(
+        answer["job"]["termination_deadline_ms"], 1_790_000_000_000u64,
+        "{answer}"
+    );
+    assert_eq!(answer["row"]["termination_deadline_ms"], Value::Null);
+    let listed = client.ok("jobs", json!({"order": "id", "at": stopped, "limit": 1}));
+    assert_eq!(listed["rows"][0]["id"], stopped);
+    assert_eq!(listed["rows"][0]["termination_deadline_ms"], Value::Null);
+    assert_eq!(listed["rows"][0]["network"], "host");
+    let (head, _) = client.output(json!({"id": silent}));
+    assert_eq!(
+        head["totals"],
+        json!([
+            {"stream": "stdout", "written_bytes": 0, "kept_bytes": 0},
+            {"stream": "stderr", "written_bytes": 0, "kept_bytes": 0},
+        ])
+    );
+    let (head, lines) = client.output(json!({"id": half}));
+    assert_eq!(data(&lines, Some("stdout")), b"abc");
+    assert_eq!(
+        head["totals"],
+        json!([
+            {"stream": "stdout", "written_bytes": "not_measured", "kept_bytes": "not_measured"},
+            {"stream": "stderr", "written_bytes": "not_measured", "kept_bytes": "not_measured"},
+        ])
+    );
+}
