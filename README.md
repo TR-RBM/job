@@ -130,6 +130,7 @@ Each line names a task, shows how it looks, and links to the page that explains 
 | Limit where a Job may write | `job run --confine -- cmd` | [Security model](docs/security.md) |
 | Give a Job its own namespaces, a read-only root, a private tmp | `job run --namespaces user,mount,pid --root read-only --private-tmp yes -- cmd` | [Namespaces, read-only root and private tmp](docs/isolation.md) |
 | Cut a Job off from the network, or send it through a proxy or a tunnel | `job run --net none -- cmd` | [Networks, their boundaries and proxy credentials](docs/networking.md) |
+| Send everything a Job sends through Tor, and nothing any other way | `job run --net socks5://127.0.0.1:9050 -- curl https://check.torproject.org/api/ip` | [Example: a Job whose traffic goes through Tor](docs/networking.md#example-a-job-whose-traffic-goes-through-tor) |
 | Use a network the administrator prepared and named | `job run --net profile:updates -- cmd`, `job net list` | [Networks, their boundaries and proxy credentials](docs/networking.md) |
 | Cap bandwidth for a Job or a Queue | `job run --bandwidth 10Mbit -- cmd` | [Networks, their boundaries and proxy credentials](docs/networking.md) |
 

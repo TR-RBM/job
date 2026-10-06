@@ -38,6 +38,53 @@ A proxy on this host's loopback is reached by the Job at 198.18.0.2; job rewrite
 
 The tunnel carries IPv4 only: IPv6 addresses and allowed ranges in a WireGuard file are ignored. `openvpn:FILE` is refused.
 
+## Example: a Job whose traffic goes through Tor
+
+A Tor client offers a SOCKS5 proxy, by default on `127.0.0.1:9050`. Naming that proxy as the Job's network sends everything the Job can send through Tor, and leaves it nothing else:
+
+```sh
+job run --net socks5://127.0.0.1:9050 -- curl https://check.torproject.org/api/ip
+```
+
+```text
+{"IsTor":true,"IP":"185.220.101.110"}
+```
+
+The same request from the host itself, without job, answers `"IsTor":false` with the host's own address.
+
+What the Job gets:
+
+- A network namespace of its own. The only connection that leaves it is TCP to the proxy's address and port.
+- The variables `ALL_PROXY` and `all_proxy`, set to `socks5h://198.18.0.2:9050`: the address under which the Job reaches the host's loopback, and a scheme that lets the proxy resolve names, so no name is looked up outside Tor. Addresses ending in `.onion` work for the same reason.
+- No direct name resolution, no UDP, no IPv6 and no ICMP.
+
+A program that honours those variables, as `curl`, `git` over HTTPS and most HTTP libraries do, works unchanged. A program that ignores them and connects directly gets no connection at all; it does not reach the network by another way. When the Tor client stops while the Job runs, the Job's connections fail and stay failed.
+
+For a whole Queue, so that every Job submitted to it goes through Tor without saying so:
+
+```sh
+job queue create tor --net socks5://127.0.0.1:9050
+job run --queue tor -- curl https://check.torproject.org/api/ip
+```
+
+For a name people can use without knowing the address, the administrator declares a profile in the service configuration, see [named routing profiles](#named-routing-profiles):
+
+```toml
+[network.profiles.tor]
+description = "everything through the local Tor client"
+egress = "socks5://127.0.0.1:9050"
+sharing = "shared"
+```
+
+```sh
+job net show tor
+job run --net profile:tor -- curl https://check.torproject.org/api/ip
+```
+
+The Tor client itself is not started by job; run it as your system does. It has to be running before the Job starts.
+
+What this does and does not give: it keeps a Job's traffic from leaving any other way than through the proxy. It does not make a program anonymous by itself: what the program sends through the proxy, such as cookies, account names or a browser's fingerprint, is the program's affair, and the Tor Project's own advice applies. The network a Job uses is fixed when the Job starts; a Job that is already running cannot be moved to another network.
+
 ## One network per Job, or one shared by a Queue
 
 - `--net default` without a bandwidth: the Job shares the host's network with everything else on the host.
