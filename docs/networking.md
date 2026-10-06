@@ -60,6 +60,10 @@ What the Job gets:
 
 A program that honours those variables, as `curl`, `git` over HTTPS and most HTTP libraries do, works unchanged. A program that ignores them and connects directly gets no connection at all; it does not reach the network by another way. When the Tor client stops while the Job runs, the Job's connections fail and stay failed.
 
+Names do not leak. The Job's resolver file names `127.0.0.1`, where nothing listens, and no packet to a name server can leave its namespace, so a name is either handed to the proxy and resolved by Tor, or not resolved at all. Watching the host's name-service ports while such a Job looked a name up through its resolver, through a direct connection and through the proxy showed no query for that name from the host; a name the host itself looked up at the same time was seen. A program that insists on resolving a name itself before it speaks to the proxy therefore fails; it does not leak.
+
+The Job can reach the proxy's port and nothing else on the host: other services listening on the host's loopback are not reachable from it.
+
 For a whole Queue, so that every Job submitted to it goes through Tor without saying so:
 
 ```sh
