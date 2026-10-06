@@ -80,6 +80,17 @@ impl Bench {
     fn errors(&self) -> String {
         fs::read_to_string(self.path("daemon.err")).unwrap_or_default()
     }
+
+    fn said(&self, text: &str) -> bool {
+        let deadline = Instant::now() + Duration::from_secs(10);
+        while !self.errors().contains(text) {
+            if Instant::now() >= deadline {
+                return false;
+            }
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        true
+    }
 }
 
 impl Drop for Bench {
@@ -373,7 +384,7 @@ fn the_runtime_socket_is_separate_and_a_stale_state_socket_is_removed() {
     assert_eq!(mode(&bench.path("run")), 0o700);
     assert_eq!(mode(&bench.path("run/job.sock")), 0o600);
     assert!(
-        bench.errors().contains("chosen by JOB_RUNTIME_DIR"),
+        bench.said("chosen by JOB_RUNTIME_DIR"),
         "{}",
         bench.errors()
     );
@@ -466,7 +477,7 @@ fn a_default_user_service_binds_under_xdg_runtime_dir() {
 fn jobd_is_the_daemon_and_everyday_help_omits_internal_commands() {
     let mut bench = Bench::new("jobd");
     fs::create_dir_all(bench.path("bin")).unwrap();
-    fs::copy(JOB, bench.path("bin/job")).unwrap();
+    placed(&bench.path("bin/job"));
     std::os::unix::fs::symlink("job", bench.path("bin/jobd")).unwrap();
     let jobd = bench.path("bin/jobd");
 
@@ -652,7 +663,7 @@ fn another_user_is_admitted_only_through_the_socket_group_and_recorded_as_actor(
         return;
     };
     fs::create_dir_all(bench.path("bin")).unwrap();
-    fs::copy(JOB, bench.path("bin/job")).unwrap();
+    placed(&bench.path("bin/job"));
     fs::set_permissions(bench.path("bin/job"), fs::Permissions::from_mode(0o755)).unwrap();
     let probe = foreign(&bench, uid, gid, 1, &["doctor", "--bogus"]).output();
     if !probe
@@ -776,7 +787,7 @@ fn a_private_socket_refuses_another_user_even_when_the_files_are_opened_up() {
         return;
     };
     fs::create_dir_all(bench.path("bin")).unwrap();
-    fs::copy(JOB, bench.path("bin/job")).unwrap();
+    placed(&bench.path("bin/job"));
     let probe = foreign(&bench, uid, gid, 1, &["doctor", "--bogus"]).output();
     if !probe
         .as_ref()
@@ -937,13 +948,17 @@ fn a_cgroup_root_holding_other_processes_is_refused() {
 
     let mut watching = run(false);
     let deadline = Instant::now() + Duration::from_secs(10);
-    while !base.join("state/daemon.sock").exists()
-        && watching.try_wait().unwrap().is_none()
-        && Instant::now() < deadline
-    {
+    let discovered = loop {
+        let said = fs::read_to_string(base.join("err")).unwrap();
+        if (said.contains("processes are watched instead")
+            && said.contains("holds 1 other processes"))
+            || watching.try_wait().unwrap().is_some()
+            || Instant::now() >= deadline
+        {
+            break fs::read_to_string(base.join("err")).unwrap();
+        }
         std::thread::sleep(Duration::from_millis(10));
-    }
-    let discovered = fs::read_to_string(base.join("err")).unwrap();
+    };
     let _ = watching.kill();
     let _ = watching.wait();
     let _ = sleeper.kill();
@@ -963,6 +978,27 @@ fn a_cgroup_root_holding_other_processes_is_refused() {
             && discovered.contains("holds 1 other processes"),
         "{discovered}"
     );
+}
+
+fn placed(to: &std::path::Path) {
+    fs::copy(JOB, to).unwrap();
+    let deadline = Instant::now() + Duration::from_secs(10);
+    loop {
+        let tried = Command::new(to)
+            .arg("help")
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status();
+        match tried {
+            Err(error)
+                if error.kind() == std::io::ErrorKind::ExecutableFileBusy
+                    && Instant::now() < deadline =>
+            {
+                std::thread::sleep(Duration::from_millis(10));
+            }
+            _ => break,
+        }
+    }
 }
 
 fn finished(mut child: Child, limit: Duration) -> Option<std::process::ExitStatus> {
@@ -1218,7 +1254,7 @@ fn review_the_system_option_selects_the_system_instance() {
     );
 
     fs::create_dir_all(bench.path("bin")).unwrap();
-    fs::copy(JOB, bench.path("bin/job")).unwrap();
+    placed(&bench.path("bin/job"));
     std::os::unix::fs::symlink("job", bench.path("bin/jobd")).unwrap();
     let private = |bench: &Bench, program: &str| {
         let mut command = bench.clean(&bench.path("bin").join(program));
@@ -1235,11 +1271,7 @@ fn review_the_system_option_selects_the_system_instance() {
         "{}",
         bench.errors()
     );
-    assert!(
-        bench.errors().contains("system service"),
-        "{}",
-        bench.errors()
-    );
+    assert!(bench.said("system service"), "{}", bench.errors());
     let output = private(&bench, "job")
         .args(["--system", "run", "--", "true"])
         .output()
@@ -1294,7 +1326,7 @@ fn review_a_refused_peer_is_recorded_in_the_audit_journal_a_bounded_number_of_ti
         return;
     };
     fs::create_dir_all(bench.path("bin")).unwrap();
-    fs::copy(JOB, bench.path("bin/job")).unwrap();
+    placed(&bench.path("bin/job"));
     let probe = foreign(&bench, uid, gid, 1, &["doctor", "--bogus"]).output();
     if !probe
         .as_ref()

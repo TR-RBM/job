@@ -10,7 +10,7 @@ Beyond running it, you decide for one Job, or for a whole Queue or Group of them
 - **With how much.** Reserved and limited CPU, memory and device I/O, the CPUs and the NUMA policy it uses, and its process limits, changeable while it runs.
 - **In what surroundings.** Namespaces of its own in which it sees only its own processes, a read-only file system, a private temporary directory, no new privileges, fewer capabilities, and system calls it may not make.
 - **On which network.** The host's, none at all, only through a proxy or a WireGuard tunnel, or a network the administrator prepared and named, each with an optional bandwidth ceiling.
-- **On which machine.** This one, or another host reached over SSH.
+- **On which machine.** The host the service runs on, or another host that runs job and is reached over SSH.
 - **What is kept.** Standard output and standard error apart with a size you choose, every attempt with its outcome, a terminal you can detach from and return to, the events of every Job, and a journal of who changed what.
 
 Each of these is asked for, by an option on the Job or a setting on its Queue or Group. A plain `job run -- command` adds none of them: no reservation, no limit, no sandbox.
