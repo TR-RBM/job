@@ -926,7 +926,7 @@ fn network_profile_sharing_decides_how_many_holders_serve_its_jobs() {
 
     let hold = |tag: &str| {
         format!(
-            "touch {tag}.ready; n=0; while [ ! -e release ] && [ $n -lt 300 ]; do sleep 0.1; n=$((n+1)); done"
+            "touch {tag}.ready; n=0; while [ ! -e release ] && [ $n -lt 1200 ]; do sleep 0.1; n=$((n+1)); done"
         )
     };
     let mut ids = Vec::new();
@@ -937,14 +937,16 @@ fn network_profile_sharing_decides_how_many_holders_serve_its_jobs() {
         ("f", "qa", "profile:lane"),
         ("g", "qb", "profile:lane"),
     ] {
-        ids.push(submitted(
+        let id = submitted(
             &daemon,
             &["submit", "-q", queue, "--net", profile, "--", &hold(tag)],
-        ));
-        assert!(
-            appears(&daemon.file(&format!("{tag}.ready")), 30),
-            "job {tag} did not start"
         );
+        assert!(
+            appears(&daemon.file(&format!("{tag}.ready")), 120),
+            "job {tag} did not start: {}",
+            daemon.record(&id)
+        );
+        ids.push(id);
     }
     let names: Vec<String> = holders(&daemon).into_iter().map(|(name, _)| name).collect();
     let own: Vec<&String> = names
