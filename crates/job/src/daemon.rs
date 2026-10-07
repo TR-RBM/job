@@ -1425,6 +1425,15 @@ impl Daemon {
         }
     }
 
+    fn publish_start(&self, job: &mut Job) {
+        if job.started_ms.is_none() {
+            self.learn_start(job);
+            if job.started_ms.is_some() {
+                crate::clientif::index::learned(&self.store, job);
+            }
+        }
+    }
+
     fn request_freezer(&mut self, id: u64, frozen: bool) -> Result<(), String> {
         let mut job = self
             .load(id)
@@ -1474,6 +1483,12 @@ impl Daemon {
         else {
             return;
         };
+        if job.started_ms.is_none() {
+            self.publish_start(&mut job);
+            if job.started_ms.is_some() {
+                self.jobs.insert(id, job.clone());
+            }
+        }
         let before = (job.state.clone(), job.suspension.clone());
         let update = (|| -> io::Result<()> {
             let local = crate::freezer::requested(&path)?;
@@ -2323,6 +2338,7 @@ impl Daemon {
         if job.stop.is_some() {
             return Ok(());
         }
+        self.publish_start(&mut job);
         job.stop = Some(Stop { kind, line });
         job.suspension.requested = false;
         job.suspension.pending = job.workload_cgroup.is_some();
@@ -2358,9 +2374,8 @@ impl Daemon {
                 continue;
             };
             if current.started_ms.is_none() {
-                self.learn_start(&mut current);
+                self.publish_start(&mut current);
                 if current.started_ms.is_some() {
-                    crate::clientif::index::learned(&self.store, &current);
                     self.jobs.insert(id, current.clone());
                 }
             }

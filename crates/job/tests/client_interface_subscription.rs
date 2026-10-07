@@ -1,4 +1,4 @@
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::io::{BufRead, BufReader, Read, Write};
 use std::os::unix::net::UnixStream;
 use std::path::PathBuf;
@@ -150,6 +150,7 @@ struct Client {
     reader: BufReader<UnixStream>,
     writer: UnixStream,
     next: u64,
+    held_back: VecDeque<Value>,
 }
 
 impl Client {
@@ -159,6 +160,7 @@ impl Client {
             reader: BufReader::new(writer.try_clone().unwrap()),
             writer,
             next: 1,
+            held_back: VecDeque::new(),
         };
         client.send(HELLO);
         let greeting = client.line().expect("no greeting");
@@ -171,6 +173,10 @@ impl Client {
     }
 
     fn line(&mut self) -> Option<Value> {
+        self.held_back.pop_front().or_else(|| self.read())
+    }
+
+    fn read(&mut self) -> Option<Value> {
         let mut line = String::new();
         match self.reader.read_line(&mut line) {
             Ok(0) => None,
@@ -191,9 +197,15 @@ impl Client {
 
     fn ask(&mut self, op: &str, args: Value) -> Value {
         let id = self.request(op, args);
-        let answer = self.line().expect("no answer");
-        assert_eq!(answer["re"], id, "{answer}");
-        answer
+        loop {
+            let line = self.read().expect("no answer");
+            if line.get("re").is_none() {
+                self.held_back.push_back(line);
+                continue;
+            }
+            assert_eq!(line["re"], id, "{line}");
+            return line;
+        }
     }
 
     fn ok(&mut self, op: &str, args: Value) -> Value {
