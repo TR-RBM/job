@@ -54,6 +54,27 @@ Other accounts reach it only when a socket group is configured, see
 and when their environment sets
 .Ev JOB_SYSTEM
 to 1.
+.Sh ENVIRONMENT
+.Bl -tag -width JOB_RUNTIME_DIR
+.It Ev JOB_SYSTEM
+The value 1 selects the system locations.
+.It Ev JOB_CONFIG
+Configuration file.
+A missing file named this way is an error.
+.It Ev JOB_STATE_DIR
+State directory.
+.It Ev JOB_RUNTIME_DIR
+Directory of the service socket.
+.It Ev JOB_CACHE_DIR
+Cache directory.
+.It Ev JOB_CGROUP_ROOT
+The cgroup the service manages, see
+.Sx CGROUP DELEGATION .
+.It Ev HOME , XDG_CONFIG_HOME , XDG_STATE_HOME , XDG_RUNTIME_DIR , XDG_CACHE_HOME
+Defaults of a user service.
+.It Ev LC_ALL , LC_MESSAGES , LANG
+Language of messages; German is selected by a value beginning with de.
+.El
 .Sh FILES
 .Bl -column "Runtime socket" "$XDG_RUNTIME_DIR/job/job.sock" "/var/cache/job"
 .It Sy Purpose Ta Sy User service Ta Sy System service
@@ -129,27 +150,6 @@ without a session manager, also tries
 In every other case the service and its clients must agree on these
 variables.
 A socket path longer than 107 bytes cannot be bound.
-.Sh ENVIRONMENT
-.Bl -tag -width JOB_RUNTIME_DIR
-.It Ev JOB_SYSTEM
-The value 1 selects the system locations.
-.It Ev JOB_CONFIG
-Configuration file.
-A missing file named this way is an error.
-.It Ev JOB_STATE_DIR
-State directory.
-.It Ev JOB_RUNTIME_DIR
-Directory of the service socket.
-.It Ev JOB_CACHE_DIR
-Cache directory.
-.It Ev JOB_CGROUP_ROOT
-The cgroup the service manages, see
-.Sx CGROUP DELEGATION .
-.It Ev HOME , XDG_CONFIG_HOME , XDG_STATE_HOME , XDG_RUNTIME_DIR , XDG_CACHE_HOME
-Defaults of a user service.
-.It Ev LC_ALL , LC_MESSAGES , LANG
-Language of messages; German is selected by a value beginning with de.
-.El
 .Sh CGROUP DELEGATION
 Limits are enforced through a cgroup v2 subtree that the service owns.
 The service chooses its root by the first rule that applies and names the rule
@@ -390,8 +390,8 @@ job --system queue
 .Ed
 .Sh SEE ALSO
 .Xr job 1 ,
+.Xr loginctl 1 ,
 .Xr job.conf 5 ,
-.Xr job 7 ,
-.Xr cgroups 7 ,
 .Xr systemd.resource-control 5 ,
-.Xr loginctl 1
+.Xr cgroups 7 ,
+.Xr job 7

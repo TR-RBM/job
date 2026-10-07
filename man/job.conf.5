@@ -38,7 +38,8 @@ A client can select only what is named here.
 Optional path is the namespace file: absolute, or relative to
 namespace_directory, and
 .Ar NAME
-in that directory when absent. A path under
+in that directory when absent.
+A path under
 .Pa /proc
 or with a .. component is refused.
 Optional user_namespace is the file of the user namespace that owns it, which
@@ -47,7 +48,8 @@ Optional resolv_conf is a file the Job sees as
 .Pa /etc/resolv.conf .
 Optional description is shown by
 .Cm job net show .
-At most 64 namespaces. Names use letters, digits, - and _.
+At most 64 namespaces.
+Names use letters, digits, - and _.
 .It Cm network.profiles. Ns Ar NAME
 Optional table that defines a routing profile for
 .Fl -net Cm profile:NAME .
@@ -61,12 +63,14 @@ job_bandwidth for each Job, for example 10Mbit.
 Optional dns is an array of at most three IPv4 resolver addresses.
 Optional allow and deny are arrays of at most 64 rules each, written
 ADDRESS[/PREFIX][:PORT[-PORT]][/tcp|/udp] with IPv4 addresses; deny wins, and
-allow narrows what the egress forwards. An IPv6 range is refused.
+allow narrows what the egress forwards.
+An IPv6 range is refused.
 Optional sharing is per-job (the default), per-queue or shared.
 Optional description is shown by
 .Cm job net show .
 With a proxy, dns, allow and deny are refused; with none or ns:NAME every other
-key but description is refused. At most 64 profiles.
+key but description is refused.
+At most 64 profiles.
 .It Cm pressure
 Optional array of host pressure rules; absent or empty enables none.
 Each rule requires id, resource (cpu, memory or io), metric (some or full),
@@ -81,7 +85,8 @@ There are no implicit thresholds or timing values.
 .It Cm output
 Optional table. head_bytes and tail_bytes are service defaults for the output
 quota of each recorded stream, between 1M and 1G; a Queue, Group, profile or Job
-value takes precedence. Absent values leave the built-in retention.
+value takes precedence.
+Absent values leave the built-in retention.
 budget_bytes bounds all recordings of the service together and defaults to 1G;
 completed recordings are removed oldest first while the total is above it.
 Each value is an integer number of bytes or a string such as "4M".
@@ -293,10 +298,13 @@ Accepted preset revisions are immutable; changing a definition requires a new re
 Reload refuses removal of definitions still selected by a Queue or Group.
 The historical archive retains removed definitions for attempt validation.
 Active configuration permits 128 definitions; the archive permits 4096 definitions
-and 16 MiB of JSON. Composition permits 16 parents, 16 levels and 1024 visits.
+and 16 MiB of JSON.
+Composition permits 16 parents, 16 levels and 1024 visits.
 .Pp
-Network namespaces and routing profiles are not versioned. A Job resolves the
-name when it starts and records the digest of the profile it used. Reading a
+Network namespaces and routing profiles are not versioned.
+A Job resolves the
+name when it starts and records the digest of the profile it used.
+Reading a
 configuration fails, at start and at reload, when a Queue, a Group or an
 execution profile names a namespace or routing profile that it does not define.
 .Sh EXAMPLES
