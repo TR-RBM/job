@@ -2192,6 +2192,11 @@ fn idset_help_and_completion_name_the_set_operand() {
 #[test]
 fn pidns_run_passes_stdin_and_keeps_the_streams_apart() {
     let daemon = Daemon::start("pidns-stdin");
+    let host = json(&daemon.ok(&["host", "--json"]));
+    if host["isolation_controls"]["unprivileged_user_namespaces"] != true {
+        eprintln!("skipped: this host does not let a user create namespaces");
+        return;
+    }
     let pid = ["run", "--stdin", "--namespaces", "user,mount,pid", "--"];
     let lines = piped(
         &daemon,

@@ -57,6 +57,11 @@ jobs:
           rustup default "$version"
           rustup target add "$TARGET"
 
+      # Ubuntu keeps unprivileged user namespaces from processes AppArmor does not name;
+      # the namespace tests need them.
+      - name: Allow user namespaces
+        run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+
       - name: Install the manual and completion checkers
         run: |
           sudo apt-get update

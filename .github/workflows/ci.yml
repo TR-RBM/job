@@ -25,6 +25,11 @@ jobs:
           rustup toolchain install "$version" --profile minimal --component rustfmt,clippy
           rustup default "$version"
 
+      # Ubuntu keeps unprivileged user namespaces from processes AppArmor does not name;
+      # the namespace tests need them.
+      - name: Allow user namespaces
+        run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+
       - name: Install the manual and completion checkers
         run: |
           sudo apt-get update
