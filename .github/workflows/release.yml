@@ -1,0 +1,179 @@
+# Builds, tests and packages job for Linux on x86-64 and ARM64 when a version
+# tag is pushed, and publishes the release:
+#   git tag -a v0.1.0 -m "job 0.1.0" && git push origin v0.1.0
+#
+# The version of crates/job and of packaging/arch/PKGBUILD has to match the tag.
+#
+# Started by hand (Actions > release > Run workflow) it builds and tests
+# everything but publishes nothing; the files are kept as run artifacts. The
+# Arch package is only built for a tag, because its PKGBUILD downloads the
+# source of that tag.
+
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  linux:
+    name: linux ${{ matrix.arch }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      matrix:
+        include:
+          - arch: x86_64
+            deb: amd64
+            runner: ubuntu-24.04
+          - arch: aarch64
+            deb: arm64
+            runner: ubuntu-24.04-arm
+    env:
+      TARGET: ${{ matrix.arch }}-unknown-linux-musl
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check that the versions match the tag
+        if: github.ref_type == 'tag'
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          crate="$(sed -n 's/^version = "\(.*\)"$/\1/p' crates/job/Cargo.toml | head -n 1)"
+          arch="$(sed -n 's/^pkgver=//p' packaging/arch/PKGBUILD)"
+          echo "tag $tag, crates/job $crate, PKGBUILD $arch"
+          test "$tag" = "$crate" && test "$tag" = "$arch"
+
+      # The version the workspace declares, so the gate here is the gate everywhere.
+      - name: Install the Rust toolchain
+        run: |
+          version="$(sed -n 's/^rust-version = "\(.*\)"$/\1/p' Cargo.toml)"
+          rustup toolchain install "$version" --profile minimal --component rustfmt,clippy
+          rustup default "$version"
+          rustup target add "$TARGET"
+
+      - name: Install the manual and completion checkers
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends groff mandoc fish rpm
+
+      - name: Gate
+        run: tools/check
+
+      # Linked statically against musl, so the same binary runs on every distribution.
+      - name: Build
+        run: cargo build --release --locked --target "$TARGET"
+
+      - name: Package
+        run: |
+          version="$(sed -n 's/^version = "\(.*\)"$/\1/p' crates/job/Cargo.toml | head -n 1)"
+          binary="target/$TARGET/release/job"
+          mkdir dist
+
+          name="job-v$version-${{ matrix.arch }}-linux"
+          mkdir -p "$name/target/release" "$name/docs" "$name/deploy"
+          cp "$binary" "$name/target/release/job"
+          cp -r man completions "$name/"
+          cp -r deploy/systemd deploy/runit "$name/deploy/"
+          cp docs/administration.md docs/migration.md "$name/docs/"
+          cp Makefile README.md LICENSE "$name/"
+          tar czf "dist/$name.tar.gz" "$name"
+
+          stage="$RUNNER_TEMP/stage"
+          make install PREFIX=/usr DESTDIR="$stage" JOB_BIN="$binary"
+          install -Dm644 LICENSE "$stage/usr/share/doc/job/copyright"
+
+          mkdir -p "$stage/DEBIAN"
+          sed -e "s/@version@/$version/" -e "s/@arch@/${{ matrix.deb }}/" packaging/deb/control.in > "$stage/DEBIAN/control"
+          dpkg-deb --build --root-owner-group "$stage" "dist/job_${version}-1_${{ matrix.deb }}.deb"
+          rm -r "$stage/DEBIAN"
+
+          rpmbuild -bb packaging/rpm/job.spec \
+            --target "${{ matrix.arch }}" \
+            --define "job_version $version" \
+            --define "job_stage $stage" \
+            --define "_rpmdir $RUNNER_TEMP/rpm"
+          cp "$RUNNER_TEMP"/rpm/*/*.rpm dist/
+
+      - name: Test the archive
+        run: |
+          name="$(basename dist/job-v*-linux.tar.gz .tar.gz)"
+          tar xzf "dist/$name.tar.gz" -C "$RUNNER_TEMP"
+          sudo make -C "$RUNNER_TEMP/$name" install
+          state="$(mktemp -d)"
+          JOB_STATE_DIR="$state" /usr/local/bin/jobd &
+          service=$!
+          for attempt in $(seq 1 50); do
+            [ -S "$state/daemon.sock" ] && break
+            sleep 0.2
+          done
+          answer="$(JOB_STATE_DIR="$state" JOB_CLI_COMPAT= /usr/local/bin/job run -- echo ready)"
+          kill "$service"
+          echo "$answer" | grep -qx ready
+          sudo make -C "$RUNNER_TEMP/$name" uninstall
+          test ! -e /usr/local/bin/job
+
+      - name: Test the Debian package
+        run: |
+          sudo apt-get install -y "./dist/job_"*".deb"
+          /usr/bin/job help > /dev/null
+          test -f /usr/lib/systemd/system/jobd.service
+          sudo apt-get remove -y job
+          test ! -e /usr/bin/job
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux-${{ matrix.arch }}
+          path: dist/*
+          if-no-files-found: error
+
+  arch:
+    name: arch package
+    if: github.ref_type == 'tag'
+    runs-on: ubuntu-24.04
+    container: archlinux:base-devel
+    steps:
+      - uses: actions/checkout@v4
+
+      # makepkg refuses to run as root.
+      - name: Build the package
+        run: |
+          pacman -Syu --noconfirm --needed rust
+          useradd --create-home builder
+          cp -r packaging/arch /home/builder/pkg
+          chown -R builder /home/builder/pkg
+          su builder -c "cd /home/builder/pkg && makepkg --noconfirm"
+          mkdir dist
+          cp /home/builder/pkg/*.pkg.tar.zst dist/
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: arch
+          path: dist/*
+          if-no-files-found: error
+
+  publish:
+    name: publish release
+    if: github.ref_type == 'tag'
+    needs: [linux, arch]
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Create the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          cd dist
+          sha256sum * > SHA256SUMS
+          cat SHA256SUMS
+          gh release create "$GITHUB_REF_NAME" --title "job ${GITHUB_REF_NAME#v}" --generate-notes --verify-tag ./*

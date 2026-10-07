@@ -1,0 +1,40 @@
+# Maintainer: TR-RBM <47713618+TR-RBM@users.noreply.github.com>
+#
+# Arch Linux, Artix and other pacman distributions:
+#   makepkg -si
+# The release workflow builds this file and attaches the package.
+
+pkgname=job
+pkgver=0.1.0
+pkgrel=1
+pkgdesc="Execution and scheduling service for Linux"
+arch=('x86_64' 'aarch64')
+url="https://github.com/TR-RBM/job"
+license=('Apache-2.0')
+depends=('gcc-libs' 'glibc')
+makedepends=('cargo')
+options=('!lto' '!debug')
+source=("$pkgname-$pkgver.tar.gz::$url/archive/refs/tags/v$pkgver.tar.gz")
+sha256sums=('SKIP')
+
+prepare() {
+    cd "job-$pkgver"
+    cargo fetch --locked --target "$(rustc -vV | sed -n 's/host: //p')"
+}
+
+build() {
+    cd "job-$pkgver"
+    export CARGO_TARGET_DIR=target
+    cargo build --frozen --release
+}
+
+check() {
+    cd "job-$pkgver"
+    target/release/job help > /dev/null
+}
+
+package() {
+    cd "job-$pkgver"
+    make install PREFIX=/usr DESTDIR="$pkgdir" JOB_BIN=target/release/job
+    install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+}

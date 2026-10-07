@@ -1,0 +1,12 @@
+Package: job
+Version: @version@-1
+Architecture: @arch@
+Maintainer: TR-RBM <47713618+TR-RBM@users.noreply.github.com>
+Section: admin
+Priority: optional
+Homepage: https://github.com/TR-RBM/job
+Description: execution and scheduling service for Linux
+ job runs commands as Jobs under a service that keeps them independent of
+ the terminal they came from and records what they printed and how they
+ ended. Jobs are organized into queues and groups, with reserved and limited
+ resources, namespaces, network boundaries and remote hosts over SSH.

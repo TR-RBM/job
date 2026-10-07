@@ -1,5 +1,11 @@
 # job
 
+[![CI](https://github.com/TR-RBM/job/actions/workflows/ci.yml/badge.svg)](https://github.com/TR-RBM/job/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/TR-RBM/job)](https://github.com/TR-RBM/job/releases/latest)
+[![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
+[![Rust 1.98+](https://img.shields.io/badge/rust-1.98%2B-orange)](Cargo.toml)
+[![Platform: Linux](https://img.shields.io/badge/platform-Linux%20x86--64%20%7C%20ARM64-lightgrey)](#installation)
+
 **job is an open source execution and scheduling application for Linux.** Run commands, organize work into queues and groups, and control when and how processes execute. Use job from a terminal, a script, or an automated system.
 
 A command given to job becomes a Job: a service starts it, keeps it running independently of the terminal it came from, and records what it printed and how it ended. You can leave and come back, wait for it from a script, read its output while it is written, and hold, change, retry or cancel it.
@@ -154,7 +160,18 @@ The [capability matrix](docs/capabilities.md) says for each capability how to re
 
 ## Installation
 
-job is installed from source with stable Rust and `make`:
+Every [release](https://github.com/TR-RBM/job/releases/latest) carries these files for x86-64 and ARM64, and `SHA256SUMS` beside them:
+
+| System | File | Install |
+|---|---|---|
+| Debian, Ubuntu | `job_<version>-1_<arch>.deb` | `sudo apt install ./job_*.deb` |
+| Fedora, RHEL | `job-<version>-1.<arch>.rpm` | `sudo dnf install ./job-*.rpm` |
+| Arch Linux, Artix | `job-<version>-1-x86_64.pkg.tar.zst` | `sudo pacman -U job-*.pkg.tar.zst` |
+| Any Linux | `job-v<version>-<arch>-linux.tar.gz` | unpack, then `sudo make install` in the unpacked folder |
+
+The binaries are linked statically and run on any distribution. The packages install under `/usr`, the archive under `/usr/local` or `PREFIX`, with the same files as an installation from source; `make uninstall` in the unpacked folder removes them.
+
+From source, with stable Rust 1.98 or later and `make`:
 
 ```sh
 make build
@@ -167,7 +184,7 @@ job doctor
 
 `job doctor` checks the host and the service setup and says what to do for each finding. It works without a running service.
 
-What the host needs: Linux on x86_64 with the unified cgroup hierarchy. Enforced limits, suspension and I/O control need a cgroup delegated to the service; without one the service runs and says that limits are watched, not enforced. The systemd units are shipped but were not yet run under systemd; the [administration guide](docs/administration.md) has a checklist for the first use.
+What the host needs: Linux on x86-64 or ARM64 with the unified cgroup hierarchy. Enforced limits, suspension and I/O control need a cgroup delegated to the service; without one the service runs and says that limits are watched, not enforced. The systemd units are shipped but were not yet run under systemd; the [administration guide](docs/administration.md) has a checklist for the first use.
 
 ## Documentation
 

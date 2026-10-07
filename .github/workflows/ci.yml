@@ -1,0 +1,36 @@
+# Runs the gate of the repository on every push to main and every pull request.
+
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  check:
+    name: check
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      # The version the workspace declares, so the gate here is the gate everywhere.
+      - name: Install the Rust toolchain
+        run: |
+          version="$(sed -n 's/^rust-version = "\(.*\)"$/\1/p' Cargo.toml)"
+          rustup toolchain install "$version" --profile minimal --component rustfmt,clippy
+          rustup default "$version"
+
+      - name: Install the manual and completion checkers
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends groff mandoc fish
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Gate
+        run: tools/check
