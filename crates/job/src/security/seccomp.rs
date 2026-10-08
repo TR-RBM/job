@@ -63,6 +63,11 @@ pub const NAMES: &[&str] = &[
     "recvmmsg",
 ];
 
+#[cfg(all(target_arch = "aarch64", target_env = "musl"))]
+const SYS_KEXEC_FILE_LOAD: libc::c_long = 294;
+#[cfg(not(all(target_arch = "aarch64", target_env = "musl")))]
+const SYS_KEXEC_FILE_LOAD: libc::c_long = libc::SYS_kexec_file_load;
+
 #[cfg(any(target_arch = "x86_64", target_arch = "aarch64"))]
 fn number(name: &str) -> u32 {
     (match name {
@@ -121,7 +126,7 @@ fn number(name: &str) -> u32 {
         "move_mount" => libc::SYS_move_mount,
         "open_tree" => libc::SYS_open_tree,
         "mount_setattr" => libc::SYS_mount_setattr,
-        "kexec_file_load" => libc::SYS_kexec_file_load,
+        "kexec_file_load" => SYS_KEXEC_FILE_LOAD,
         "sendmsg" => libc::SYS_sendmsg,
         "recvmsg" => libc::SYS_recvmsg,
         "sendmmsg" => libc::SYS_sendmmsg,
