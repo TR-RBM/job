@@ -273,6 +273,7 @@ pub struct Init {
     pid: Option<i32>,
     process: Option<crate::process::Handle>,
     pub command: Option<i32>,
+    exited: Option<i32>,
 }
 impl Init {
     pub(super) fn pair() -> io::Result<(Wire, Self)> {
@@ -299,6 +300,7 @@ impl Init {
                 pid: None,
                 process: None,
                 command: None,
+                exited: None,
             },
         ))
     }
@@ -309,11 +311,17 @@ impl Init {
 
     pub(super) fn adopt(&mut self) {
         drop(self.far.take());
-        if self.pid.is_none()
-            && let Some((INIT, pid)) = receive(self.near.as_raw_fd())
-        {
-            self.pid = Some(pid);
-            self.process = crate::process::Handle::open(pid, None).ok();
+        while self.pid.is_none() {
+            match receive(self.near.as_raw_fd()) {
+                Some((INIT, pid)) => {
+                    self.pid = Some(pid);
+                    self.process = crate::process::Handle::open(pid, None).ok();
+                }
+                Some((COMMAND, pid)) => self.command = Some(pid),
+                Some((EXITED, status)) => self.exited = Some(status),
+                Some(_) => {}
+                None => break,
+            }
         }
     }
 
@@ -327,6 +335,9 @@ impl Init {
     }
 
     pub(super) fn wait(&mut self) -> io::Result<ExitStatus> {
+        if let Some(status) = self.exited.take() {
+            return Ok(ExitStatus::from_raw(status));
+        }
         loop {
             match receive(self.near.as_raw_fd()) {
                 Some((COMMAND, pid)) => self.command = Some(pid),
