@@ -6555,6 +6555,7 @@ fn output_quota_service_budget_trims_oldest_completed_recordings_visibly() {
     {
         std::thread::sleep(Duration::from_millis(20));
     }
+    std::thread::sleep(Duration::from_millis(1100));
     let last = ordering_ok(&daemon, &["submit", "--", "printf", "tiny"]);
     assert!(daemon.job(&["wait", &last]).status.success());
     assert_eq!(segments(&second), 0);

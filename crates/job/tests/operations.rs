@@ -1465,6 +1465,11 @@ fn ops_a_group_member_attaches_to_a_terminal_in_the_runtime_directory() {
     let directory = std::fs::metadata(shared.base.join("run/terminals")).unwrap();
     assert_eq!(directory.mode() & 0o7777, 0o750);
     assert_eq!(directory.gid(), primary);
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while std::fs::metadata(&socket).unwrap().mode() & 0o7777 != 0o660 && Instant::now() < deadline
+    {
+        std::thread::sleep(Duration::from_millis(20));
+    }
     let listed = std::fs::metadata(&socket).unwrap();
     assert_eq!(listed.mode() & 0o7777, 0o660);
     assert_eq!(listed.gid(), primary);
