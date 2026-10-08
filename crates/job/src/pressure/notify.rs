@@ -54,7 +54,7 @@ impl Key {
         } else {
             libc::PROC_SUPER_MAGIC
         };
-        if unsafe { stat.assume_init() }.f_type != expected {
+        if i128::from(unsafe { stat.assume_init() }.f_type) != i128::from(expected) {
             return Err(io::Error::other(message(
                 "invalid pressure monitor filesystem",
             )));

@@ -59,11 +59,11 @@ fn loopback_up() -> io::Result<()> {
         *slot = *byte as libc::c_char;
     }
     let result = unsafe {
-        if libc::ioctl(socket, libc::SIOCGIFFLAGS, &mut request) != 0 {
+        if libc::ioctl(socket, libc::SIOCGIFFLAGS as _, &mut request) != 0 {
             -1
         } else {
             request.ifr_ifru.ifru_flags |= libc::IFF_UP as libc::c_short;
-            libc::ioctl(socket, libc::SIOCSIFFLAGS, &request)
+            libc::ioctl(socket, libc::SIOCSIFFLAGS as _, &request)
         }
     };
     let error = io::Error::last_os_error();

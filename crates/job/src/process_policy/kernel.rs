@@ -8,8 +8,12 @@ const BITS: usize = super::MAX_ID as usize + 1;
 const WORD_BITS: usize = libc::c_ulong::BITS as usize;
 const WORDS: usize = BITS / WORD_BITS;
 type Mask = Vec<libc::c_ulong>;
+#[cfg(target_env = "gnu")]
+type Resource = libc::__rlimit_resource_t;
+#[cfg(not(target_env = "gnu"))]
+type Resource = libc::c_int;
 
-pub fn resource(name: &str) -> Option<libc::__rlimit_resource_t> {
+pub fn resource(name: &str) -> Option<Resource> {
     Some(match name {
         "as" => libc::RLIMIT_AS,
         "core" => libc::RLIMIT_CORE,
@@ -86,7 +90,7 @@ pub struct Prepared {
     cpu_readback: Mask,
     numa: Option<(libc::c_int, Mask, bool)>,
     numa_readback: Mask,
-    limits: Vec<(libc::__rlimit_resource_t, libc::rlimit)>,
+    limits: Vec<(Resource, libc::rlimit)>,
     pub applied: Option<Applied>,
 }
 impl Prepared {

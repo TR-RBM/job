@@ -169,7 +169,7 @@ Every [release](https://github.com/TR-RBM/job/releases/latest) carries these fil
 | Arch Linux, Artix | `job-<version>-1-x86_64.pkg.tar.zst` | `sudo pacman -U job-*.pkg.tar.zst` |
 | Any Linux | `job-v<version>-<arch>-linux.tar.gz` | unpack, then `sudo make install` in the unpacked folder |
 
-The binaries are linked statically and run on any distribution. The packages install under `/usr`, the archive under `/usr/local` or `PREFIX`, with the same files as an installation from source; `make uninstall` in the unpacked folder removes them.
+The binaries are linked statically against musl and run on any distribution. musl reads users and groups from `/etc/passwd` and `/etc/group` only, so a socket group that exists only in a directory service such as LDAP or SSSD is named by its number in `job.conf`, or job is built from source. The packages install under `/usr`, the archive under `/usr/local` or `PREFIX`, with the same files as an installation from source; `make uninstall` in the unpacked folder removes them.
 
 From source, with stable Rust 1.98 or later and `make`:
 
