@@ -423,18 +423,7 @@ impl Staging {
     fn publish(self, destination: &Path) -> io::Result<()> {
         let old = std::ffi::CString::new(self.0.as_os_str().as_encoded_bytes())?;
         let new = std::ffi::CString::new(destination.as_os_str().as_encoded_bytes())?;
-        if unsafe {
-            libc::renameat2(
-                libc::AT_FDCWD,
-                old.as_ptr(),
-                libc::AT_FDCWD,
-                new.as_ptr(),
-                libc::RENAME_NOREPLACE,
-            )
-        } != 0
-        {
-            return Err(io::Error::last_os_error());
-        }
+        crate::rename::renameat2(&old, &new, libc::RENAME_NOREPLACE)?;
         File::open(destination.parent().unwrap())?.sync_all()
     }
 }

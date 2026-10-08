@@ -61,6 +61,7 @@ mod procs;
 mod query;
 mod remote;
 mod removal;
+mod rename;
 mod resource_policy;
 mod resource_update;
 mod resources;

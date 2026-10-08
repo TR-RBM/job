@@ -238,18 +238,7 @@ impl Store {
         } else {
             libc::RENAME_NOREPLACE
         };
-        if unsafe {
-            libc::renameat2(
-                libc::AT_FDCWD,
-                source.as_ptr(),
-                libc::AT_FDCWD,
-                destination.as_ptr(),
-                flag,
-            )
-        } != 0
-        {
-            return Err(io::Error::last_os_error());
-        }
+        crate::rename::renameat2(&source, &destination, flag)?;
         crate::pacing::directory(&self.root.join("jobs"))?;
         observed(self, job);
         Ok(())

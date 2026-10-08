@@ -598,18 +598,7 @@ fn move_jobs(
                 check_tree(&source)?;
                 let source = std::ffi::CString::new(source.as_os_str().as_encoded_bytes())?;
                 let destination = std::ffi::CString::new(retired.as_os_str().as_encoded_bytes())?;
-                if unsafe {
-                    libc::renameat2(
-                        libc::AT_FDCWD,
-                        source.as_ptr(),
-                        libc::AT_FDCWD,
-                        destination.as_ptr(),
-                        libc::RENAME_NOREPLACE,
-                    )
-                } != 0
-                {
-                    return Err(io::Error::last_os_error());
-                }
+                crate::rename::renameat2(&source, &destination, libc::RENAME_NOREPLACE)?;
                 *moved = true;
             }
             Err(error) if error.kind() == io::ErrorKind::NotFound => {}
