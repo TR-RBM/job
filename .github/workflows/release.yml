@@ -117,7 +117,7 @@ jobs:
             [ -S "$state/daemon.sock" ] && break
             sleep 0.2
           done
-          answer="$(JOB_STATE_DIR="$state" JOB_CLI_COMPAT= /usr/local/bin/job run -- echo ready)"
+          answer="$(JOB_STATE_DIR="$state" /usr/local/bin/job run -- echo ready)"
           kill "$service"
           echo "$answer" | grep -qx ready
           sudo make -C "$RUNNER_TEMP/$name" uninstall
