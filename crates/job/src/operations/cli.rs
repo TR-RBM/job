@@ -95,6 +95,7 @@ pub fn command(args: &[String]) -> Result<ExitCode, String> {
     if print(first, &filter, json).is_err() {
         return Ok(ExitCode::SUCCESS);
     }
+    let mut reported = 0;
     loop {
         if !follow {
             break;
@@ -103,6 +104,16 @@ pub fn command(args: &[String]) -> Result<ExitCode, String> {
         let records = reader.more().map_err(|error| {
             format!("{}: {error}", message("cannot read the event journal", &[]))
         })?;
+        if reader.missed > reported {
+            eprintln!(
+                "job: {}",
+                message(
+                    "{count} event records were removed by rotation before they were read",
+                    &[("count", (reader.missed - reported).to_string())]
+                )
+            );
+            reported = reader.missed;
+        }
         if print(records, &filter, json).is_err() {
             break;
         }

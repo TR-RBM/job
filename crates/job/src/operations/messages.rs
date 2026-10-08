@@ -17,6 +17,10 @@ const CATALOGUE: &[(&str, &str)] = &[
         "Aufruf: job events [--follow] [--job ID] [--queue PATH] [--since MS] [--format json|text]",
     ),
     (
+        "{count} event records were removed by rotation before they were read",
+        "{count} Ereigniseinträge wurden durch die Rotation entfernt, bevor sie gelesen wurden",
+    ),
+    (
         "event lines that could not be read, such as a line cut short by a crash",
         "Ereigniszeilen, die nicht lesbar waren, etwa eine durch einen Absturz abgeschnittene Zeile",
     ),

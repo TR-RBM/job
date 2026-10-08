@@ -496,6 +496,53 @@ impl Drop for Follower {
 }
 
 #[test]
+fn ops_events_follower_left_behind_by_rotation_says_how_many_records_it_missed() {
+    let daemon = Daemon::configured(
+        "follow-behind",
+        "[events]\nrotate_bytes = 1500\nkeep_files = 2\n",
+        "",
+    );
+    let first = daemon.ok(&["submit", "--", "true"]);
+    daemon.until(&first, &["Succeeded"]);
+    let mut follower = daemon
+        .command(&["events", "--follow", "--format", "json"])
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+    let mut lines = BufReader::new(follower.stdout.take().unwrap()).lines();
+    while !lines
+        .next()
+        .unwrap()
+        .unwrap()
+        .contains("\"to\":\"succeeded\"")
+    {}
+    let pid = follower.id() as libc::pid_t;
+    assert_eq!(unsafe { libc::kill(pid, libc::SIGSTOP) }, 0);
+    let mut last = String::new();
+    for _ in 0..8 {
+        last = daemon.ok(&["submit", "--", "true"]);
+        daemon.until(&last, &["Succeeded"]);
+    }
+    assert_eq!(unsafe { libc::kill(pid, libc::SIGCONT) }, 0);
+    let ending = format!("\"job\":{last},");
+    loop {
+        let line = lines.next().unwrap().unwrap();
+        if line.contains(&ending) && line.contains("\"to\":\"succeeded\"") {
+            break;
+        }
+    }
+    let _ = follower.kill();
+    let mut warning = String::new();
+    std::io::Read::read_to_string(&mut follower.stderr.take().unwrap(), &mut warning).unwrap();
+    let _ = follower.wait();
+    assert!(
+        warning.contains("event records were removed by rotation before they were read"),
+        "{warning}"
+    );
+}
+
+#[test]
 fn ops_events_follow_prints_new_records_across_rotation_without_a_gap() {
     let daemon = Daemon::configured(
         "follow-rotation",
@@ -517,13 +564,14 @@ fn ops_events_follow_prints_new_records_across_rotation_without_a_gap() {
     for _ in 0..5 {
         last = daemon.ok(&["submit", "--", "true"]);
         daemon.until(&last, &["Succeeded"]);
-    }
-    loop {
-        let event = follower.next();
-        let done = event["to"] == "succeeded" && event["job"].as_u64().unwrap().to_string() == last;
-        seen.push(event);
-        if done {
-            break;
+        loop {
+            let event = follower.next();
+            let done =
+                event["to"] == "succeeded" && event["job"].as_u64().unwrap().to_string() == last;
+            seen.push(event);
+            if done {
+                break;
+            }
         }
     }
     let seqs: Vec<u64> = seen

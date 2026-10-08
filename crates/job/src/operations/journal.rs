@@ -742,14 +742,29 @@ impl Filter {
 pub struct Reader {
     directory: PathBuf,
     last_seq: u64,
-    position: Option<(u64, u64)>,
+    position: Option<(u64, u64, Option<u64>)>,
     pub unreadable: usize,
+    pub missed: u64,
 }
 
 fn identity(file: &File) -> io::Result<(u64, u64)> {
     use std::os::unix::fs::MetadataExt;
     let metadata = file.metadata()?;
     Ok((metadata.ino(), metadata.len()))
+}
+
+fn leading_seq(bytes: &[u8]) -> Option<u64> {
+    let end = bytes.iter().position(|byte| *byte == b'\n')?;
+    let (records, _) = parse(&bytes[..=end]);
+    records.first().map(|record| record.seq)
+}
+
+fn leading_seq_of(file: &mut File) -> io::Result<Option<u64>> {
+    use std::io::{BufRead, BufReader, Seek, SeekFrom};
+    file.seek(SeekFrom::Start(0))?;
+    let mut line = Vec::new();
+    BufReader::new(&mut *file).read_until(b'\n', &mut line)?;
+    Ok(leading_seq(&line))
 }
 
 fn whole_lines(bytes: &[u8]) -> &[u8] {
@@ -766,6 +781,7 @@ impl Reader {
             last_seq: 0,
             position: None,
             unreadable: 0,
+            missed: 0,
         }
     }
 
@@ -774,6 +790,9 @@ impl Reader {
         self.unreadable += unreadable;
         for record in records {
             if record.seq > self.last_seq {
+                if self.last_seq > 0 && record.seq > self.last_seq + 1 {
+                    self.missed += record.seq - self.last_seq - 1;
+                }
                 self.last_seq = record.seq;
                 found.push(record);
             }
@@ -804,7 +823,7 @@ impl Reader {
                 } else {
                     whole_lines(&bytes)
                 };
-                self.position = Some((inode, usable.len() as u64));
+                self.position = Some((inode, usable.len() as u64, leading_seq(usable)));
                 self.take(usable, &mut found);
             }
             Err(error) if error.kind() == io::ErrorKind::NotFound => self.position = None,
@@ -820,7 +839,7 @@ impl Reader {
             Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(None),
             Err(error) => Err(error),
         };
-        let (seq, unreadable) = (self.last_seq, self.unreadable);
+        let (seq, unreadable, missed) = (self.last_seq, self.unreadable, self.missed);
         let mut found = Vec::new();
         for _ in 0..ROTATION_RETRIES {
             let Some(files) = list(&self.directory)? else {
@@ -828,6 +847,7 @@ impl Reader {
             };
             self.last_seq = seq;
             self.unreadable = unreadable;
+            self.missed = missed;
             found = self.pass(complete, &files)?;
             if list(&self.directory)?.as_ref() == Some(&files) {
                 break;
@@ -842,7 +862,7 @@ impl Reader {
 
     pub fn more(&mut self) -> io::Result<Vec<Record>> {
         use std::io::{Read, Seek, SeekFrom};
-        let Some((inode, offset)) = self.position else {
+        let Some((inode, offset, leading)) = self.position else {
             return self.all(false);
         };
         let mut file = match File::open(self.directory.join(CURRENT)) {
@@ -851,7 +871,7 @@ impl Reader {
             Err(error) => return Err(error),
         };
         let (now_inode, length) = identity(&file)?;
-        if now_inode != inode || length < offset {
+        if now_inode != inode || length < offset || leading_seq_of(&mut file)? != leading {
             return self.all(false);
         }
         if length == offset {
@@ -861,7 +881,7 @@ impl Reader {
         let mut bytes = Vec::new();
         file.read_to_end(&mut bytes)?;
         let usable = whole_lines(&bytes).to_vec();
-        self.position = Some((inode, offset + usable.len() as u64));
+        self.position = Some((inode, offset + usable.len() as u64, leading));
         let mut found = Vec::new();
         self.take(&usable, &mut found);
         Ok(found)

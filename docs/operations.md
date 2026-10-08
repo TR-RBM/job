@@ -33,7 +33,7 @@ Admission records have `kind` `queue`, `group` or `host`, with `object_id` and `
 
 `--job ID` selects one Job, `--queue PATH` a Queue or Group and everything below it, `--since MS` records from that time on. `--format json` prints one object per line and adds `schema_version`, currently 1. Text output is tab-separated with a header line.
 
-`--follow` prints what is there and then every new record until you interrupt it. It looks for new records five times a second and reads on across a rotation without leaving a gap in `seq`, as long as the files it still needs are kept.
+`--follow` prints what is there and then every new record until you interrupt it. It looks for new records five times a second and reads on across a rotation without leaving a gap in `seq`, as long as the files it still needs are kept. A follower that falls further behind than `keep_files` files reach says on standard error how many records were removed by rotation before it read them, and goes on with the oldest record still kept.
 
 ### Retention and durability
 

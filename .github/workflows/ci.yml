@@ -42,4 +42,4 @@ jobs:
 
       - name: List every failing test
         if: failure()
-        run: cargo test --quiet --no-fail-fast 2>&1 | grep -E -- '--- FAILED|panicked at|^  left|^ right' || true
+        run: cargo test --quiet --no-fail-fast 2>&1 | grep -E -A6 -- 'panicked at' || true
