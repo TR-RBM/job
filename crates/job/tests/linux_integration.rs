@@ -1396,7 +1396,11 @@ fn fed(mut command: Command, input: &str) -> Output {
         .stderr(Stdio::piped())
         .spawn()
         .unwrap();
-    std::io::Write::write_all(&mut child.stdin.take().unwrap(), input.as_bytes()).unwrap();
+    if let Err(error) =
+        std::io::Write::write_all(&mut child.stdin.take().unwrap(), input.as_bytes())
+    {
+        assert_eq!(error.kind(), std::io::ErrorKind::BrokenPipe, "{error}");
+    }
     child.wait_with_output().unwrap()
 }
 
