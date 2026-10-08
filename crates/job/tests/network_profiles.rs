@@ -939,7 +939,19 @@ fn network_profile_sharing_decides_how_many_holders_serve_its_jobs() {
     ] {
         let id = submitted(
             &daemon,
-            &["submit", "-q", queue, "--net", profile, "--", &hold(tag)],
+            &[
+                "submit",
+                "-q",
+                queue,
+                "--cores",
+                "0.1",
+                "--mem",
+                "64M",
+                "--net",
+                profile,
+                "--",
+                &hold(tag),
+            ],
         );
         assert!(
             appears(&daemon.file(&format!("{tag}.ready")), 120),
