@@ -26,6 +26,7 @@ cp -a %{job_stage}/. %{buildroot}/
 /usr/share/man/man8/jobd.8*
 /usr/share/bash-completion/completions/job
 /usr/share/fish/vendor_completions.d/job.fish
+/usr/share/zsh/site-functions/_job
 /usr/lib/systemd/system/jobd.service
 /usr/lib/systemd/user/jobd.service
 /usr/share/doc/job

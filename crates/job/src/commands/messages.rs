@@ -229,7 +229,7 @@ const CATALOGUE: &[(&str, &str)] = &[
         "ask the job service of another host over ssh",
         "den job-Dienst eines anderen Hosts über ssh fragen",
     ),
-    ("bash or fish", "bash oder fish"),
+    ("bash, fish or zsh", "bash, fish oder zsh"),
     ("bytes it may write", "Bytes, die er schreiben darf"),
     ("cancel a Job", "einen Job abbrechen"),
     (
@@ -755,6 +755,18 @@ const CATALOGUE: &[(&str, &str)] = &[
     (
         "show the resources, devices and Queues of a host",
         "Ressourcen, Geräte und Queues eines Hosts zeigen",
+    ),
+    (
+        "print the service's metrics in the Prometheus text format",
+        "die Metriken des Dienstes im Textformat von Prometheus ausgeben",
+    ),
+    (
+        "When the service does not answer, job_up 0 is printed and the exit status is 125.",
+        "Antwortet der Dienst nicht, wird job_up 0 ausgegeben und der Rückgabewert ist 125.",
+    ),
+    (
+        "The service can also serve them over HTTP; see the [metrics] table in job.conf(5).",
+        "Der Dienst kann sie auch über HTTP anbieten; siehe die Tabelle [metrics] in job.conf(5).",
     ),
     (
         "show the state of the pressure rules",

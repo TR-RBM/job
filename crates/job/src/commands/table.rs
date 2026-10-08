@@ -127,7 +127,7 @@ const SYSCALLS: Value = Value::Words(&[&["inherit"], crate::security::SYSCALLS])
 const NAMESPACES: Value = Value::Words(&[&["inherit"], crate::isolation::KINDS]);
 const ROOT: Value = Value::Words(&[&["read-only", "inherit"]]);
 const DETACH: Value = Value::Words(&[&["none", "ctrl-]", "ctrl-a", "ctrl-b", "ctrl-g", "ctrl-t"]]);
-const SHELLS: Value = Value::Words(&[&["bash", "fish"]]);
+const SHELLS: Value = Value::Words(&[&["bash", "fish", "zsh"]]);
 const QUERIES: Value = Value::Words(&[&["errors", "grep", "lines", "tail", "full"]]);
 const KINDS: Value = Value::Words(&[super::completion::KINDS]);
 
@@ -1271,6 +1271,16 @@ pub static COMMANDS: &[Command] = &[
         ..BASE
     },
     Command {
+        path: &["metrics"],
+        section: Section::Inspection,
+        summary: "print the service's metrics in the Prometheus text format",
+        notes: &[
+            "When the service does not answer, job_up 0 is printed and the exit status is 125.",
+            "The service can also serve them over HTTP; see the [metrics] table in job.conf(5).",
+        ],
+        ..BASE
+    },
+    Command {
         path: &["screenshot"],
         section: Section::Inspection,
         summary: "write a PNG of a monitor or of the window of a Job",
@@ -1564,7 +1574,7 @@ pub static COMMANDS: &[Command] = &[
         path: &["completion"],
         section: Section::Administration,
         summary: "print a completion script for a shell",
-        operands: &[required("SHELL", SHELLS, "bash or fish")],
+        operands: &[required("SHELL", SHELLS, "bash, fish or zsh")],
         ..BASE
     },
     Command {

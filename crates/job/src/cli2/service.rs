@@ -22,6 +22,9 @@ impl Daemon {
             }
             Call::Move { id, queue } => self.moved(id, &queue),
             Call::Set { .. } => refused(crate::idset::message("a set of Job IDs is needed")),
+            Call::Metrics => refused(crate::metrics::message(
+                "the service gave an unexpected answer",
+            )),
             Call::Settings { path, key } => match self.objects.resolve(&path) {
                 Ok(id) => Response::Extended {
                     answer: Box::new(Answer::Settings {

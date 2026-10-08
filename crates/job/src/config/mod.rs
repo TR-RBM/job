@@ -53,6 +53,8 @@ pub struct Config {
     pub events: crate::operations::journal::Settings,
     #[serde(default, skip_serializing_if = "crate::netpolicy::Network::unset")]
     pub network: crate::netpolicy::Network,
+    #[serde(default, skip_serializing_if = "crate::metrics::Settings::unset")]
+    pub metrics: crate::metrics::Settings,
 }
 
 impl Default for Config {
@@ -69,6 +71,7 @@ impl Default for Config {
             audit: Default::default(),
             events: Default::default(),
             network: Default::default(),
+            metrics: Default::default(),
         }
     }
 }
@@ -100,6 +103,7 @@ impl Config {
         config.audit.validate().map_err(io::Error::other)?;
         config.events.validate().map_err(io::Error::other)?;
         config.network.validate().map_err(io::Error::other)?;
+        config.metrics.validate().map_err(io::Error::other)?;
         config
             .network
             .validate_presets(&config.presets)

@@ -6,6 +6,11 @@ use std::time::{Duration, Instant};
 
 const BASH: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../../completions/job.bash");
 const FISH: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../../completions/job.fish");
+const ZSH: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../../completions/job.zsh");
+const ZSH_DRIVER: &str = concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/tests/fixtures/zsh-completion-driver.zsh"
+);
 const SYNTAX: &str = concat!(
     env!("CARGO_MANIFEST_DIR"),
     "/../../docs/reference/syntax.md"
@@ -414,7 +419,7 @@ fn contract_table_options_reach_the_parsers() {
 
 #[test]
 fn contract_completion_scripts_are_generated() {
-    for (shell, path) in [("bash", BASH), ("fish", FISH)] {
+    for (shell, path) in [("bash", BASH), ("fish", FISH), ("zsh", ZSH)] {
         let output = offline(&["completion", shell]);
         assert!(output.status.success());
         let german = plain(&["completion", shell])
@@ -435,11 +440,11 @@ fn contract_completion_scripts_are_generated() {
             .unwrap()
             .success()
     );
-    let refused = offline(&["completion", "zsh"]);
+    let refused = offline(&["completion", "tcsh"]);
     assert_eq!(refused.status.code(), Some(125));
     assert_eq!(
         err(&refused),
-        "job: job completion cannot read `zsh`; see job completion --help\n"
+        "job: job completion cannot read `tcsh`; see job completion --help\n"
     );
     let absent = std::env::temp_dir().join(format!("job-cli-{}-absent", std::process::id()));
     assert_eq!(complete(BASH, "job ru", &absent), ["run"]);
@@ -467,13 +472,66 @@ fn contract_completion_scripts_are_generated() {
     assert_eq!(complete(BASH, "job screenshot --p", &absent), ["--pid"]);
     assert_eq!(
         complete(BASH, "job completion ''", &absent),
-        ["bash", "fish"]
+        ["bash", "fish", "zsh"]
     );
     assert_eq!(complete(BASH, "job wait ''", &absent), Vec::<String>::new());
     assert_eq!(
         complete(BASH, "job run -- ''", &absent),
         Vec::<String>::new()
     );
+}
+
+fn complete_zsh(words: &str, state: &std::path::Path) -> Vec<String> {
+    let output = Command::new("zsh")
+        .args(["-f", ZSH_DRIVER, ZSH, words])
+        .env("JOB_BINARY", env!("CARGO_BIN_EXE_job"))
+        .env("JOB_STATE_DIR", state)
+        .env("LC_ALL", "C")
+        .output()
+        .unwrap();
+    assert!(output.status.success(), "{}", err(&output));
+    out(&output)
+        .lines()
+        .filter(|line| !line.is_empty())
+        .map(str::to_owned)
+        .collect()
+}
+
+#[test]
+fn contract_zsh_completion_offers_what_bash_offers() {
+    if Command::new("zsh").arg("-fc").arg("true").output().is_err() {
+        println!("skipped: zsh is not installed");
+        return;
+    }
+    assert!(
+        Command::new("zsh")
+            .args(["-n", ZSH])
+            .status()
+            .unwrap()
+            .success()
+    );
+    let absent = std::env::temp_dir().join(format!("job-cli-{}-zsh-absent", std::process::id()));
+    for words in [
+        "job ru",
+        "job queue s",
+        "job run --net ''",
+        "job logs --stream s",
+        "job run --cap-drop sys_a",
+        "job queue set --job-seccomp-deny ptr",
+        "job signal -s K",
+        "job screenshot --p",
+        "job completion ''",
+        "job wait ''",
+    ] {
+        assert_eq!(
+            complete_zsh(words, &absent),
+            complete(BASH, words, &absent),
+            "{words}"
+        );
+    }
+    assert_eq!(complete_zsh("job --s", &absent), ["--system"]);
+    assert_eq!(complete_zsh("job run --dir ''", &absent), ["<files -/>"]);
+    assert_eq!(complete_zsh("job run -- ''", &absent), ["<normal 1 >"]);
 }
 
 #[test]
@@ -516,6 +574,20 @@ fn contract_dynamic_completion_is_bounded() {
         complete(BASH, "job queue move --group dev", &daemon.state),
         ["development"]
     );
+    if Command::new("zsh").arg("-fc").arg("true").output().is_ok() {
+        for words in [
+            "job wait ''",
+            "job run --queue dev",
+            "job queue show dev",
+            "job queue move --group dev",
+        ] {
+            assert_eq!(
+                complete_zsh(words, &daemon.state),
+                complete(BASH, words, &daemon.state),
+                "{words}"
+            );
+        }
+    }
     for index in 0..230 {
         daemon.ok(&["queue", "create", &format!("many{index:03}")]);
     }

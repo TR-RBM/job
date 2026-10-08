@@ -1,4 +1,4 @@
-.Dd October 5, 2026
+.Dd October 8, 2026
 .Dt JOB.CONF 5
 .Os
 .Sh NAME
@@ -143,6 +143,26 @@ is closed, 8388608 bytes by default.
 Both must be at least 1.
 .Cm job config reload
 applies a change.
+.It Cm metrics.listen
+Optional address on which the service serves its metrics over HTTP, an IP
+address and a port such as 127.0.0.1:9877 or [::1]:9877.
+Absent, which is the default, nothing listens; there is no default address
+and no default port.
+A host name is refused.
+Port 0 lets the kernel choose a port, which the start line names.
+The address is bound at start, before the socket is opened; when it cannot be
+bound the service does not start.
+Only GET /metrics is answered, in the Prometheus text format 0.0.4; any other
+path or method gets 404.
+The listener has no authentication and no TLS: everyone who can connect to the
+address reads the metrics.
+An address that is not a loopback address exposes them to the network, and the
+service says so at start.
+A change takes effect at the next restart.
+See
+.Cm job metrics
+in
+.Xr job 1 .
 .El
 .Pp
 The ordinary profile uses only explicit resource requests for admission.
@@ -288,8 +308,10 @@ shows the running configuration, its source and enabled compatibility rules.
 .Pp
 .Cm job config reload
 requires no active or queued Jobs and cannot change the profile,
-the socket group, the cgroup root or
-.Cm cgroup.required .
+the socket group, the cgroup root,
+.Cm cgroup.required
+or
+.Cm metrics.listen .
 To switch profile, finish or cancel existing Jobs, stop the service,
 change configuration, and restart.
 Recovery refuses active records from a different profile.
@@ -314,6 +336,9 @@ profile = "ordinary"
 
 [socket]
 group = "jobusers"
+
+[metrics]
+listen = "127.0.0.1:9877"
 
 [network.namespaces.lab]
 description = "the measurement bench"

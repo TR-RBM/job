@@ -3218,3 +3218,38 @@ fn client_interface_subscription_samples_live_figures_of_the_interest_set() {
         client_interface_cpu_ms(pid) - before
     );
 }
+
+#[test]
+#[ignore = "requires a writable delegated cgroup; run through job"]
+fn metrics_report_the_use_of_the_jobs_cgroup() {
+    let service = Service::start("metrics");
+    let id = service.ok(&["submit", "--", "touch ready; sleep 5"]);
+    service.wait_file("ready");
+    let output = service.cli(&["metrics"]);
+    assert!(output.status.success(), "{output:?}");
+    let text = String::from_utf8(output.stdout).unwrap();
+    let value = |name: &str| -> f64 {
+        text.lines()
+            .find_map(|line| line.strip_prefix(&format!("{name} ")))
+            .unwrap_or_else(|| panic!("no {name} in {text}"))
+            .parse()
+            .unwrap()
+    };
+    let jobs = service.cgroup.join("jobs");
+    assert_eq!(
+        value("job_use_processes"),
+        fs::read_to_string(jobs.join("pids.current"))
+            .unwrap()
+            .trim()
+            .parse::<f64>()
+            .unwrap()
+    );
+    assert!(value("job_use_memory_bytes") > 0.0);
+    assert!(value("job_use_cpu_seconds_total") >= 0.0);
+    assert!(value("job_use_cpu_throttled_seconds_total") >= 0.0);
+    assert!(value("job_use_oom_kills_total") >= 0.0);
+    assert!(text.contains("backend=\"cgroup\""), "{text}");
+    assert!(text.contains("enforcement=\"enforced\""), "{text}");
+    service.ok(&["cancel", &id]);
+    service.cli(&["wait", &id, "--timeout", "3s"]);
+}

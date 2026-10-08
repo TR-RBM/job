@@ -12,3 +12,4 @@
 644 ./usr/share/man/man5/job.conf.5
 644 ./usr/share/man/man7/job.7
 644 ./usr/share/man/man8/jobd.8
+644 ./usr/share/zsh/site-functions/_job

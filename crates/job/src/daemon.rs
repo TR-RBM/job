@@ -3964,6 +3964,12 @@ fn respond(shared: &Shared, request: Request) -> Response {
         Request::Extended {
             call: crate::cli2::Call::Set { call },
         } => idset_service::respond(shared, daemon, call),
+        Request::Extended {
+            call: crate::cli2::Call::Metrics,
+        } => {
+            drop(daemon);
+            crate::metrics::answer(shared)
+        }
         Request::Extended { call } => {
             let response = daemon.extended(call);
             shared.changed.notify_all();
@@ -4590,6 +4596,7 @@ pub fn serve(store: Store) -> io::Result<()> {
     );
     daemon.reestimate();
     daemon.admit_within(now_ms(), 0, false);
+    let metrics = crate::metrics::bind(&daemon.config.metrics)?;
     let listener = endpoint.listen(&daemon.config.socket)?;
     eprintln!(
         "job daemon: {}",
@@ -4610,6 +4617,7 @@ pub fn serve(store: Store) -> io::Result<()> {
         daemon: Mutex::new(daemon),
         changed: Condvar::new(),
     });
+    crate::metrics::serve(Arc::clone(&shared), metrics)?;
     let ticker = Arc::clone(&shared);
     std::thread::spawn(move || {
         let mut next_tick = std::time::Instant::now() + TICK;

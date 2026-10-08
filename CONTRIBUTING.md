@@ -33,7 +33,7 @@ tools/check
 
 A change is ready when `tools/check` passes on it. `make check` runs the same. It does four things and stops at the first that fails:
 
-1. `tools/install-check` installs into a temporary directory with a stub binary, compares the installed files and their modes with `tools/install-manifest`, checks the service units and the runit example, uninstalls and checks that nothing is left. It then renders the four manual pages with groff, and with mandoc where it is installed, and fails on any warning, and checks the syntax of the Bash and fish completion files.
+1. `tools/install-check` installs into a temporary directory with a stub binary, compares the installed files and their modes with `tools/install-manifest`, checks the service units and the runit example, uninstalls and checks that nothing is left. It then renders the four manual pages with groff, and with mandoc where it is installed, and fails on any warning, and checks the syntax of the Bash, fish and zsh completion files.
 2. `cargo fmt --all --check`: the code is formatted with rustfmt's defaults.
 3. `cargo clippy --quiet --all-targets -- -D warnings`: every clippy warning is an error.
 4. `cargo test --quiet`: all unit and integration tests.
@@ -53,6 +53,7 @@ Integration tests are in `crates/job/tests/`. They start the built binary and a 
 | `terminal_sessions.rs` | shared terminals |
 | `cli_contract.rs` | help, completion, the syntax reference, option checks, JSON envelopes |
 | `linux_integration.rs` | file locations, `jobd`, `doctor`, the socket group, cgroup discovery |
+| `metrics.rs` | `job metrics` and the HTTP listener of the service |
 
 Run one file or one group of cases with `cargo test --test durability` or `cargo test --test watch_backend network_boundary_`.
 
@@ -86,11 +87,12 @@ These are the rules the existing code follows. Reviewers hold changes to them; o
 - **Rust only**, apart from the `Makefile`, the service scripts under `deploy/` and the tools under `tools/`, which are POSIX shell.
 - **No comments in code.** Names and structure carry the meaning.
 - **Messages go through a catalogue.** Each module directory has a `messages.rs` with a table of English texts and their German translations and a `message()` function that picks by `LC_ALL`, `LC_MESSAGES` and `LANG`. `crates/job/src/security/messages.rs` is the model. The English text is the key. German addresses the reader as `du` and uses plain words. Identifiers a program reads, such as JSON field names, option names and outcome names, are never translated. Some older top-level files, among them `daemon.rs`, still build English messages in place; new text does not.
-- **Commands and options are declared once**, in `crates/job/src/commands/table.rs`, with a help text in `crates/job/src/commands/messages.rs`. Help, the option check, completion and the syntax reference come from that table. After changing it, regenerate the three generated files and never edit them by hand:
+- **Commands and options are declared once**, in `crates/job/src/commands/table.rs`, with a help text in `crates/job/src/commands/messages.rs`. Help, the option check, completion and the syntax reference come from that table. After changing it, regenerate the four generated files and never edit them by hand:
 
   ```sh
   target/debug/job completion bash > completions/job.bash
   target/debug/job completion fish > completions/job.fish
+  target/debug/job completion zsh > completions/job.zsh
   target/debug/job help --syntax > docs/reference/syntax.md
   ```
 

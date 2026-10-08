@@ -152,6 +152,7 @@ What these controls protect against, and what they do not, is in the [security m
 | Back up and restore the state, or convert it from an earlier version | `job state backup --source DIR --destination DIR` | [State migration and restoration](docs/migration.md) |
 | Know what survives a crash or a restart | | [Reliability](docs/reliability.md) |
 | Know how fast it is and what bounds it | | [Performance](docs/performance.md) |
+| Feed Prometheus or node_exporter | `job metrics`, `[metrics] listen` in the configuration | [Metrics](docs/metrics.md) |
 | Submit safely from a script that may repeat itself | `job submit --idempotency-key build-1234 -- make` | [Reliability](docs/reliability.md) |
 | Use job from another program | a diagnostic summary, a command policy file, a hook | [Automation](docs/integrations.md) |
 | Write a program that shows and steers the service while it runs | one connection: a snapshot, then every change as it happens, listings, output, and job's commands as words | [Client interface](docs/client-interface.md) |
@@ -180,7 +181,7 @@ make install PREFIX=$HOME/.local  # a private installation
 job doctor
 ```
 
-`DESTDIR` stages the same tree elsewhere for a package, as in `make install PREFIX=/usr DESTDIR=/tmp/pkg`. `make install` puts `job` and the service entry point `jobd` in `bin`; the manuals `job(1)`, `job.conf(5)`, `job(7)` and `jobd(8)` under `share/man`; Bash and fish completion; a systemd system unit and a systemd user unit; and under `share/doc/job` the licence, the administration guide, the migration guide and a runit run script. The other guides are read from the source tree. It creates no user, enables no service and changes no kernel setting. `make uninstall` removes exactly what was installed.
+`DESTDIR` stages the same tree elsewhere for a package, as in `make install PREFIX=/usr DESTDIR=/tmp/pkg`. `make install` puts `job` and the service entry point `jobd` in `bin`; the manuals `job(1)`, `job.conf(5)`, `job(7)` and `jobd(8)` under `share/man`; Bash, fish and zsh completion; a systemd system unit and a systemd user unit; and under `share/doc/job` the licence, the administration guide, the migration guide and a runit run script. The other guides are read from the source tree. It creates no user, enables no service and changes no kernel setting. `make uninstall` removes exactly what was installed.
 
 `job doctor` checks the host and the service setup and says what to do for each finding. It works without a running service.
 
@@ -209,6 +210,7 @@ Topic pages:
 - [Namespaces, read-only root and private tmp](docs/isolation.md)
 - [Networks, their boundaries and proxy credentials](docs/networking.md)
 - [Automation](docs/integrations.md)
+- [Metrics in the Prometheus text format](docs/metrics.md)
 - [Client interface: the service's protocol for interface programs](docs/client-interface.md)
 
 Reference:

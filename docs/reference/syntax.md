@@ -973,6 +973,21 @@ show the resources, devices and Queues of a host.
 
 With --format json the envelope kind is `host`.
 
+### job metrics
+
+print the service's metrics in the Prometheus text format.
+
+    job metrics
+
+| Option | Meaning |
+|---|---|
+| `-h, --help` | show this help |
+
+| Exit status | Meaning |
+|---|---|
+| 0 | success |
+| 125 | usage error or service failure |
+
 ### job screenshot
 
 write a PNG of a monitor or of the window of a Job.
@@ -2472,7 +2487,7 @@ print a completion script for a shell.
 
 | Operand | Meaning |
 |---|---|
-| `SHELL` | bash or fish |
+| `SHELL` | bash, fish or zsh |
 
 | Exit status | Meaning |
 |---|---|

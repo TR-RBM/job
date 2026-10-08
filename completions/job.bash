@@ -9,7 +9,7 @@ _job_complete() {
         [[ $word == -- ]] && return
     done
     if (( COMP_CWORD == 1 )); then
-        mapfile -t COMPREPLY < <(compgen -W 'run submit create edit release retry wait cancel suspend continue signal update resource-update reprioritize move remove attach list show status explain logs log attempts pressure host screenshot net config state doctor audit events completion help daemon hook classify policy queue group profile class --system' -- "$cur")
+        mapfile -t COMPREPLY < <(compgen -W 'run submit create edit release retry wait cancel suspend continue signal update resource-update reprioritize move remove attach list show status explain logs log attempts pressure host metrics screenshot net config state doctor audit events completion help daemon hook classify policy queue group profile class --system' -- "$cur")
         return
     fi
     key=${COMP_WORDS[1]}
@@ -42,8 +42,8 @@ _job_complete() {
         'log') opts='--attempt --help'; valued='--attempt' ;;
         'pressure parse') opts='--resource --host --help'; valued='--resource' ;;
         'host') opts='--on --ssh-key --ssh-option --json --format --help'; valued='--on --ssh-key --ssh-option --format' ;;
+        'metrics'|'net'|'config'|'config check'|'config reload'|'state'|'completion'|'daemon'|'hook'|'classify'|'queue'|'queue clear'|'group') opts='--help'; valued='' ;;
         'screenshot') opts='--output --job --pid --display --help'; valued='--output -o --job --pid --display' ;;
-        'net'|'config'|'config check'|'config reload'|'state'|'completion'|'daemon'|'hook'|'classify'|'queue'|'queue clear'|'group') opts='--help'; valued='' ;;
         'net list'|'net show') opts='--json --help'; valued='' ;;
         'config init') opts='--profile --help'; valued='--profile' ;;
         'state validate') opts='--source --help'; valued='--source' ;;
@@ -127,7 +127,7 @@ _job_complete() {
         'net:0'|'profile:0'|'class:0') mapfile -t COMPREPLY < <(compgen -W 'list show' -- "$cur") ;;
         'config:0') mapfile -t COMPREPLY < <(compgen -W 'check init show reload' -- "$cur") ;;
         'state:0') mapfile -t COMPREPLY < <(compgen -W 'validate backup migrate restore' -- "$cur") ;;
-        'completion:0') mapfile -t COMPREPLY < <(compgen -W 'bash fish' -- "$cur") ;;
+        'completion:0') mapfile -t COMPREPLY < <(compgen -W 'bash fish zsh' -- "$cur") ;;
         'queue create:0'|'queue show:0'|'queue set:0'|'queue unset:0'|'queue rename:0'|'queue move:0'|'queue close:0'|'queue open:0'|'queue update:0'|'queue suspend:0'|'queue continue:0'|'queue cancel:0'|'queue remove:0'|'queue pause:0'|'queue resume:0'|'queue add:0'|'queue clear:0'|'queue rm:0') mapfile -t COMPREPLY < <("${COMP_WORDS[0]}" __complete queue "$cur" 2>/dev/null) ;;
         'queue:0') mapfile -t COMPREPLY < <(compgen -W 'create list show set unset rename move close open update suspend continue cancel remove pause resume add clear rm' -- "$cur"; "${COMP_WORDS[0]}" __complete queue "$cur" 2>/dev/null) ;;
         'group create:0'|'group show:0'|'group set:0'|'group unset:0'|'group rename:0'|'group move:0'|'group close:0'|'group open:0'|'group update:0'|'group suspend:0'|'group continue:0'|'group cancel:0'|'group remove:0'|'group pause:0'|'group resume:0') mapfile -t COMPREPLY < <("${COMP_WORDS[0]}" __complete group "$cur" 2>/dev/null) ;;

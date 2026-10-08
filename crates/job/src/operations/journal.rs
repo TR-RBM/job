@@ -434,6 +434,7 @@ impl Journal {
                 wait_ms: wait,
             });
         }
+        crate::metrics::transition(job, &to, record.wait_ms);
         self.jobs.insert(job.id, (job.attempt, to));
         self.transitions += 1;
         self.append(record);

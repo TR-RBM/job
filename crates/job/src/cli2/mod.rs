@@ -20,6 +20,7 @@ pub enum Call {
     Settings { path: String, key: Option<String> },
     Rows,
     Set { call: crate::idset::Call },
+    Metrics,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -28,6 +29,7 @@ pub enum Answer {
     Settings { explanation: settings::Explanation },
     Rows { view: crate::model::QueueView },
     Set { report: crate::idset::Report },
+    Metrics { text: String },
 }
 
 impl Call {
@@ -65,7 +67,10 @@ pub fn ask(call: Call) -> Result<Answer, String> {
 }
 
 pub fn unknown_request(text: String) -> String {
-    if text.contains("unknown variant `Extended`") || text.contains("unknown variant `Set`") {
+    if text.contains("unknown variant `Extended`")
+        || text.contains("unknown variant `Set`")
+        || text.contains("unknown variant `Metrics`")
+    {
         message("the running service is older than this command; restart it from the same release")
     } else {
         text

@@ -178,13 +178,14 @@ Terminals over `--on` are not supported. Attaching over an SSH login to the host
 | Queue depth and wait statistics | `job queue show PATH`, `job group show PATH` | nothing | not applicable | `operations.rs`: `ops_queue_and_group_show_report_depth_and_wait_statistics` |
 | Health | `job host`, the `health` check of `job doctor` | nothing | not applicable | `operations.rs`: `ops_host_reports_health_and_doctor_reads_it` |
 | Limits around the service | `surrounding_limits` in `job host --json`, `job doctor` | a readable cgroup of the service | reported as not discoverable | `operations.rs`: `ops_host_and_doctor_report_the_limits_around_the_service` |
+| Metrics in the Prometheus text format | `job metrics`; `listen` under `[metrics]` for HTTP at `/metrics` | a TCP port for the listener; the `job_use_` families need a delegated cgroup | without a cgroup the `job_use_` families are left out; an address that cannot be bound stops the start | `metrics.rs`: `metrics_command_agrees_with_list_and_host`, `metrics_endpoint_serves_only_get_metrics`, `metrics_listener_is_absent_unless_configured`, `metrics_address_in_use_stops_the_start`; `freezer.rs`: `metrics_report_the_use_of_the_jobs_cgroup` |
 | Monitoring mode forbidden | `required = true` under `[cgroup]` | a delegated cgroup | the service refuses to start and says what is missing | `operations.rs`: `ops_required_cgroup_refuses_to_start_without_one_and_says_what_is_missing`, `ops_monitoring_mode_is_announced_and_reported` |
 | The system service from another account | `job --system COMMAND`, `JOB_SYSTEM=1` | a system service and admission to its socket | no service is reached | `linux_integration.rs`: `review_the_system_option_selects_the_system_instance`; no system service was run as root |
 | systemd system and user units | installed by `make install` | systemd; 254 or later for `DelegateSubgroup=` | not known | not tested: the units were never run under systemd |
 | runit service | the example `runit/run` | runit, root to install it | not applicable | the shipped script was checked for shell syntax only; `service_manager.rs`: `runit_restart_term_kill_and_down_up_keep_running_jobs_adopted_and_controllable` runs `jobd` under a private `runsv` |
-| Help, syntax reference, completion | `job help`, `job completion bash`, `job completion fish` | nothing | not applicable | `cli_contract.rs`: `contract_completion_scripts_are_generated`, `contract_syntax_reference_is_generated` |
+| Help, syntax reference, completion | `job help`, `job completion bash`, `job completion fish`, `job completion zsh` | nothing | not applicable | `cli_contract.rs`: `contract_completion_scripts_are_generated`, `contract_zsh_completion_offers_what_bash_offers`, `contract_syntax_reference_is_generated` |
 
-Events, depth, health, the limits around the service and monitoring mode are described in [operating the service](operations.md); the audit journal in [reliability](reliability.md#the-audit-journal).
+Events, depth, health, the limits around the service and monitoring mode are described in [operating the service](operations.md); the audit journal in [reliability](reliability.md#the-audit-journal); metrics in [metrics](metrics.md).
 
 ## Desktop
 

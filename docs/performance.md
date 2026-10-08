@@ -106,6 +106,19 @@ On this class of machine: a virtual machine with a virtual disk, btrfs, where on
 
 No target is set for the time the service takes to answer while it cancels or removes thousands of Jobs for another client; it does not answer until the operation is done, which is the seconds in the table. No target is set for Queues with priorities, aging or fair share; two Jobs per second were measured there and that is not a number to promise. The statement for this release: the service takes more than ten submissions per second, was run with Queues of 500 waiting Jobs and stores of 10 000 held ones, and starts about eight short Jobs per second on this disk.
 
+## Metrics
+
+One run, 2026-10-08, on the machine above at a load average of 2.4, release build, watch backend, with 20 Queues of `--max-running 2`, 1 000 held Jobs and 100 ended ones. The exposition was 52 374 bytes in 882 series of 30 families.
+
+| Measurement | Min | Median | Max |
+|---|---|---|---|
+| `job metrics`, client time, 20 runs | 4.0 ms | 4.2 ms | 4.5 ms |
+| `job host`, client time, for comparison, 20 runs | 4.4 ms | 4.7 ms | 5.1 ms |
+| `GET /metrics` with curl, 1.2 s apart so that every answer is gathered anew, 20 runs | 1.5 ms | 1.7 ms | 1.9 ms |
+| `GET /metrics` back to back, answered from the one-second reuse, 20 runs | 0.23 ms | 0.26 ms | 1.6 ms |
+
+The time the service's lock is held while gathering was not measured on its own; it is part of the 1.7 ms of an HTTP answer gathered anew, which also covers reading `/proc/meminfo`, the health figures and writing the text. Not measured: 10 000 records, hundreds of Queues, scrapes while Jobs are being started, and the cgroup backend.
+
 ## What was not measured
 
 - The cgroup backend for anything but the idle round trip, another file system, a physical disk, a machine under memory pressure.

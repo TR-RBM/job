@@ -43,6 +43,7 @@ mod isolation;
 mod lifecycle;
 mod link;
 mod logfile;
+mod metrics;
 mod migration;
 mod model;
 mod netpolicy;
@@ -1509,6 +1510,7 @@ fn carry_out(args: &[String]) -> Result<ExitCode, String> {
         }
         "daemon" => service::run(rest),
         "doctor" => doctor::command(rest),
+        "metrics" => metrics::command(rest),
         "net" => netpolicy::command(rest),
         "shim" => {
             let value = |name: &str| rest.windows(2).find(|w| w[0] == name).map(|w| w[1].clone());

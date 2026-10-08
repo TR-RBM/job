@@ -18,7 +18,7 @@ pub mod confirmed;
 pub mod index;
 pub mod invocation;
 mod jobs;
-mod measure;
+pub mod measure;
 mod messages;
 mod native;
 mod output;
@@ -30,7 +30,7 @@ mod spell;
 mod subscribe;
 mod table;
 mod totals;
-mod tree;
+pub mod tree;
 
 pub use messages::message;
 

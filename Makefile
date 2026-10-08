@@ -8,6 +8,7 @@ bindir = $(PREFIX)/bin
 mandir = $(PREFIX)/share/man
 bashdir = $(PREFIX)/share/bash-completion/completions
 fishdir = $(PREFIX)/share/fish/vendor_completions.d
+zshdir = $(PREFIX)/share/zsh/site-functions
 unitdir = $(PREFIX)/lib/systemd
 docdir = $(PREFIX)/share/doc/job
 
@@ -20,6 +21,7 @@ FILES = \
 	$(mandir)/man8/jobd.8 \
 	$(bashdir)/job \
 	$(fishdir)/job.fish \
+	$(zshdir)/_job \
 	$(unitdir)/system/jobd.service \
 	$(unitdir)/user/jobd.service \
 	$(docdir)/LICENSE \
@@ -35,7 +37,7 @@ build:
 install:
 	$(INSTALL) -d $(DESTDIR)$(bindir) $(DESTDIR)$(mandir)/man1 $(DESTDIR)$(mandir)/man5 \
 		$(DESTDIR)$(mandir)/man7 $(DESTDIR)$(mandir)/man8 $(DESTDIR)$(bashdir) \
-		$(DESTDIR)$(fishdir) $(DESTDIR)$(unitdir)/system $(DESTDIR)$(unitdir)/user \
+		$(DESTDIR)$(fishdir) $(DESTDIR)$(zshdir) $(DESTDIR)$(unitdir)/system $(DESTDIR)$(unitdir)/user \
 		$(DESTDIR)$(docdir)/runit
 	$(INSTALL) -m 0755 $(JOB_BIN) $(DESTDIR)$(bindir)/job
 	ln -sf job $(DESTDIR)$(bindir)/jobd
@@ -45,6 +47,7 @@ install:
 	$(INSTALL) -m 0644 man/jobd.8 $(DESTDIR)$(mandir)/man8/jobd.8
 	$(INSTALL) -m 0644 completions/job.bash $(DESTDIR)$(bashdir)/job
 	$(INSTALL) -m 0644 completions/job.fish $(DESTDIR)$(fishdir)/job.fish
+	$(INSTALL) -m 0644 completions/job.zsh $(DESTDIR)$(zshdir)/_job
 	sed 's|@bindir@|$(bindir)|g' deploy/systemd/jobd.service.in > $(DESTDIR)$(unitdir)/system/jobd.service
 	chmod 0644 $(DESTDIR)$(unitdir)/system/jobd.service
 	sed 's|@bindir@|$(bindir)|g' deploy/systemd/jobd-user.service.in > $(DESTDIR)$(unitdir)/user/jobd.service

@@ -58,3 +58,4 @@ for page in man/job.1 man/job.conf.5 man/job.7 man/jobd.8; do
 done
 if command -v bash > /dev/null; then bash -n completions/job.bash; fi
 if command -v fish > /dev/null; then fish -n completions/job.fish; fi
+if command -v zsh > /dev/null; then zsh -n completions/job.zsh; fi

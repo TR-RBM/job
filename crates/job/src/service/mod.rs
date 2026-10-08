@@ -44,6 +44,11 @@ impl Cgroup {
 }
 
 pub fn restart_needed(old: &crate::config::Config, new: &crate::config::Config) -> Option<String> {
+    if old.metrics != new.metrics {
+        return Some(crate::metrics::message(
+            "changing the metrics listener requires a daemon restart",
+        ));
+    }
     (old.socket != new.socket || old.cgroup != new.cgroup).then(|| {
         message(
             "changing the socket group or the cgroup root requires a daemon restart",

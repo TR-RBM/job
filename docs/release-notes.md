@@ -1,5 +1,10 @@
 # Release notes
 
+## Since 0.1.0
+
+- zsh completion, generated from the same command table as the Bash and fish completion and installed as `share/zsh/site-functions/_job`; `job completion zsh` prints it. It was driven in zsh with the completion system's functions replaced by stand-ins that print what they are given, not in an interactive zsh session.
+- Metrics in the Prometheus text format: `job metrics` prints them, and with `listen` under `[metrics]` in the configuration the service serves them over HTTP at `/metrics`. Nothing listens unless that is configured. See [metrics](metrics.md).
+
 ## First redesigned release
 
 These notes compare this release with the earlier tool, which was developed under the name `exec` and kept its state in `~/.local/state/exec`. The comparison point in the source history is commit `862c8f9`. This release has state schema 18 and protocol 20.

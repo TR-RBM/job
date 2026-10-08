@@ -1,4 +1,4 @@
-.Dd October 6, 2026
+.Dd October 8, 2026
 .Dt JOB 1
 .Os
 .Sh NAME
@@ -71,11 +71,13 @@
 .Op Fl -all | Fl -syntax | Ar command ...
 .Nm
 .Cm completion
-.Cm bash | fish
+.Cm bash | fish | zsh
 .Nm
 .Cm doctor
 .Op Fl -json
 .Op Fl -system
+.Nm
+.Cm metrics
 .Nm
 .Cm audit
 .Op Fl -target Ar id | path
@@ -1332,6 +1334,33 @@ and
 which is null when nothing is to be done.
 The exit status is 0 when no check failed and 1 otherwise; a service that
 does not answer is a failed check.
+.Sh METRICS
+.Cm metrics
+prints the figures of the service in the Prometheus text exposition format
+0.0.4: Jobs by state, per Queue and Group the Jobs by state, the age of the
+oldest queued Job and the limits it sets, the pool, reservations and the
+memory of the host, the output budget, the use of the cgroup that holds all
+Jobs where the service manages one, health and an info series with the
+version, and per Queue histograms of waiting time and run time and a count of
+ended attempts since the service started.
+No label names a Job.
+It takes no options.
+When the service does not answer it prints
+.Li job_up 0
+and the exit status is 125.
+.Pp
+With
+.Cm metrics.listen
+in the configuration the service serves the same text over HTTP at
+.Pa /metrics ;
+see
+.Xr job.conf 5 .
+.Pp
+For the textfile collector of node_exporter:
+.Bd -literal -offset indent
+job metrics > /var/lib/node_exporter/job.prom.$$
+mv /var/lib/node_exporter/job.prom.$$ /var/lib/node_exporter/job.prom
+.Ed
 .Sh STATE MAINTENANCE
 State maintenance requires the service to be stopped.
 .Cm state validate Fl -source Ar directory
@@ -1775,7 +1804,7 @@ option and the command.
 .Cm log
 and the earlier queue spellings keep their own reading of arguments.
 .Pp
-.Cm completion Cm bash | fish
+.Cm completion Cm bash | fish | zsh
 prints a completion script.
 It completes commands, options and listed values without the service.
 Job identifiers and queue and group paths are asked from the service by a

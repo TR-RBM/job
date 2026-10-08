@@ -145,6 +145,7 @@ Options stand before operands or after them; `--` ends the options only where a 
 ```sh
 job completion bash > ~/.local/share/bash-completion/completions/job
 job completion fish > ~/.config/fish/completions/job.fish
+job completion zsh > ~/.zfunc/_job    # with fpath+=(~/.zfunc) before compinit in ~/.zshrc
 ```
 
 The scripts complete commands, subcommands, options and listed values such as `--net`, `--stream`, `--cap-drop` and signal names without the service. For a Job ID or a Queue or Group path they ask the service through a query that gives up after about a third of a second and then offers nothing. Commands that act on waiting or running work are offered the held, queued and running Jobs. `show`, `status`, `logs`, `log` and `attempts` are offered completed Jobs as well, and `retry` and `remove` only completed ones, the most recent 200.

@@ -404,11 +404,12 @@ job queue show development/builds
 job group show /
 job host
 job doctor
+job metrics
 ```
 
-The service writes one record for every state change of a Job and for every pause, close and pressure hold of a Queue or Group. `job events` reads that journal, selects by Job, by subtree or by time, and with `--follow` keeps printing new records. `queue show` and `group show` report the depth of the subtree: how many Jobs are held, queued, starting, running, suspended and stopping, how long the oldest queued Job has waited, and the median and longest wait of the Jobs started in the last hour. `job host` ends with a health section and with the limits a service manager or container set around the service, which the service cannot lift. `job doctor` checks the host and the service setup, works without a running service and says what to do about each finding.
+The service writes one record for every state change of a Job and for every pause, close and pressure hold of a Queue or Group. `job events` reads that journal, selects by Job, by subtree or by time, and with `--follow` keeps printing new records. `queue show` and `group show` report the depth of the subtree: how many Jobs are held, queued, starting, running, suspended and stopping, how long the oldest queued Job has waited, and the median and longest wait of the Jobs started in the last hour. `job host` ends with a health section and with the limits a service manager or container set around the service, which the service cannot lift. `job doctor` checks the host and the service setup, works without a running service and says what to do about each finding. `job metrics` prints the same kind of figures in the Prometheus text format, and the service can serve them over HTTP for a Prometheus server.
 
-Details: [operating the service](operations.md).
+Details: [operating the service](operations.md), [metrics](metrics.md).
 
 ## The audit journal
 
@@ -436,14 +437,15 @@ job help
 job queue set --help
 job completion bash > ~/.local/share/bash-completion/completions/job
 job completion fish > ~/.config/fish/completions/job.fish
+job completion zsh > ~/.zfunc/_job    # with fpath+=(~/.zfunc) before compinit in ~/.zshrc
 ```
 
-`make install` installs the completion files already; the two commands above are for a manual setup. Completion offers commands, options and listed values without the service, and asks the service briefly for Job IDs and paths.
+`make install` installs the completion files already; the commands above are for a manual setup. Completion offers commands, options and listed values without the service, and asks the service briefly for Job IDs and paths.
 
 ## Where to read on
 
 - [Capability matrix](capabilities.md): what needs what, and what is not available.
-- [Operating the service](operations.md), [reliability](reliability.md) and [performance](performance.md).
+- [Operating the service](operations.md), [metrics](metrics.md), [reliability](reliability.md) and [performance](performance.md).
 - [Security model](security.md).
 - [Administration guide](administration.md) and [migration guide](migration.md).
 - [Release notes](release-notes.md).
